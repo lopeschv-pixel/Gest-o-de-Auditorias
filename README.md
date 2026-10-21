@@ -16,7 +16,7 @@ Porta padrão 8000 (`PORT` para alterar). SQLite em `data/nuclaud.db` (`NUCLAUD_
 ## Fluxo e cadastros
 
 - Cadastre áreas no menu lateral. Os formulários de áreas e normas ficam na própria página, com confirmação/erro de salvamento.
-- Cadastre normas e requisitos. Cada requisito tem apenas norma e código, sem campo descrição. Os requisitos oficiais ainda não foram importados: veja [REQUIREMENTS.md](REQUIREMENTS.md).
+- Cadastre normas e requisitos. Cada requisito tem apenas norma e código, sem campo descrição. O catálogo inicial já contém 339 códigos de fontes oficiais; veja edições e abrangência em [REQUIREMENTS.md](REQUIREMENTS.md).
 - Cadastre auditores com habilitações independentes por norma: Auditor líder, Auditor e Observador. Funções antigas foram preservadas na migração.
 - Na programação, selecione tipo, ano, uma ou mais áreas, uma ou mais normas, mês, líder, equipe, observadores e requisitos cadastrados. Não há título nem cadastro de áreas dentro da programação. Códigos automáticos: AUDI-I-001-2027 / AUDI-F-001-2027, com sequência por tipo e ano. Tipo e ano ficam preservados após gerar o código.
 - O líder precisa ter habilitação de líder em todas as normas; membros/observadores precisam da respectiva função em pelo menos uma norma. Uma pessoa não ocupa duas funções na mesma auditoria. Pelo menos um requisito por norma deve ser selecionado.
@@ -35,7 +35,7 @@ Planejamento de auditores mostra, por pessoa e ano do programa, as auditorias de
 
 ## Demonstração no GitHub Pages
 
-`python scripts/build_preview.py` gera `/tmp/nuclaud-preview/NUCLAUD-v9.html` a partir da mesma interface do servidor. Publicado como index.html na branch gh-pages. Ativação do Pages depende das configurações do repositório; publicação só é confirmada quando o provedor concluir a implantação.
+`python scripts/build_preview.py` gera `/tmp/nuclaud-preview/NUCLAUD-v10.html` a partir da mesma interface do servidor. Publicado como index.html na branch gh-pages. Ativação do Pages depende das configurações do repositório; publicação só é confirmada quando o provedor concluir a implantação.
 
 A demonstração usa armazenamento local do navegador, separado do SQLite. Mantém a mesma chave de dados das prévias anteriores. Se o navegador bloquear armazenamento, os registros ficam apenas na sessão e há um aviso. Não limpar/resetar o armazenamento para atualizar o aplicativo.
 
@@ -49,4 +49,4 @@ Planos antigos com uma data continuam visíveis, sem inventar horários; ao edit
 
 ## Limites
 
-Protótipo sem autenticação, perfis de acesso, anexos, revisão formal, exclusão ou edição de cadastros/constatações. Use dados fictícios na demonstração pública. Não há integração com o sistema de PACs. Requisitos oficiais ainda pendentes, conforme REQUIREMENTS.md.
+Protótipo sem autenticação, perfis de acesso, anexos, revisão formal, exclusão ou edição de cadastros/constatações. Use dados fictícios na demonstração pública. Não há integração com o sistema de PACs. O catálogo é um índice de códigos: nas ISO, a abrangência é a do sumário da prévia oficial; não é o texto integral das normas. ASME III e Secretaria Naval não foram pré-carregadas por orientação do usuário.

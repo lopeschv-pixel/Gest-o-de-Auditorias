@@ -11,6 +11,8 @@ import server
 class Workflow(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.preload=server.PRELOAD_REQUIREMENTS
+        server.PRELOAD_REQUIREMENTS=False
         cls.tmp = tempfile.TemporaryDirectory()
         server.DB = Path(cls.tmp.name) / 'test.db'
         with server.connection() as con:
@@ -27,6 +29,7 @@ class Workflow(unittest.TestCase):
         cls.http.shutdown()
         cls.http.server_close()
         cls.tmp.cleanup()
+        server.PRELOAD_REQUIREMENTS=cls.preload
 
     def request(self, path, body=None, method=None):
         req = urllib.request.Request(self.url+path, data=json.dumps(body).encode() if body else None, headers={'Content-Type':'application/json'}, method=method)
@@ -162,6 +165,22 @@ class Workflow(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError):
                 self.request('/api/audits/'+str(aid),dict(audit,plan=dict(plan,periods=invalid),status='Plano em rascunho'),'PUT')
         self.assertEqual(server.validate_periods([dict(date='2037-03-10',start='08:00',end='12:00'),dict(date='2037-03-10',start='13:00',end='17:00')])[1]['start'],'13:00')
+
+    def test_official_catalog_preload_is_idempotent_and_preserves_manual_records(self):
+        import sqlite3
+        with sqlite3.connect(':memory:') as con:
+            con.execute('CREATE TABLE requirements (id INTEGER PRIMARY KEY,payload TEXT NOT NULL)')
+            manual=dict(norm='ISO 9001:2015',code='8.4',custom='Manter cadastro existente')
+            con.execute('INSERT INTO requirements(payload) VALUES (?)',(json.dumps(manual),))
+            added=server.seed_requirements(con)
+            self.assertEqual(added,338)
+            self.assertEqual(server.seed_requirements(con),0)
+            rows=server.catalog(con,'requirements')
+            self.assertEqual(len(rows),339)
+            self.assertEqual(next(r for r in rows if r['norm']=='ISO 9001:2015' and r['code']=='8.4')['custom'],manual['custom'])
+            self.assertEqual({r['norm'] for r in rows},{'ISO 9001:2015','ISO 14001','ISO 45001','ANSN 1.16'})
+            self.assertTrue(any(r['norm']=='ANSN 1.16' and r['code']=='4.13.2.2' for r in rows))
+            self.assertTrue(all('description' not in r for r in rows))
 
     def test_ui_is_served(self):
         with urllib.request.urlopen(self.url+'/') as r:

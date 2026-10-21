@@ -6,6 +6,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 DB = Path(os.environ.get('NUCLAUD_DB', ROOT / 'data' / 'nuclaud.db'))
+PRELOAD_REQUIREMENTS = True
+CATALOG_PATH = ROOT / 'static' / 'requirements-catalog.json'
 NORMS = ['ISO 9001:2015', 'ANSN 1.16', 'ISO 14001', 'ISO 45001', 'ASME III', 'Secretaria Naval']
 
 def connection():
@@ -40,8 +42,35 @@ def connection():
             con.execute('UPDATE audits SET payload=? WHERE id=?', (json.dumps(audit), aid))
         for name in audit.get('area_names', [audit['area']] if audit.get('area') else []):
             con.execute('INSERT OR IGNORE INTO areas(name) VALUES (?)', (name,))
+    if PRELOAD_REQUIREMENTS:
+        seed_requirements(con)
     con.commit()
     return con
+
+
+def requirement_sources():
+    return [{k:v for k,v in batch.items() if k != 'codes'} | {'count':len(batch['codes'])} for batch in json.loads(CATALOG_PATH.read_text())['batches']]
+
+
+def seed_requirements(con):
+    con.execute('CREATE TABLE IF NOT EXISTS requirement_imports (norm TEXT PRIMARY KEY, import_key TEXT NOT NULL)')
+    batches = json.loads(CATALOG_PATH.read_text())['batches']
+    added = 0
+    for batch in batches:
+        previous = con.execute('SELECT import_key FROM requirement_imports WHERE norm=?', (batch['norm'],)).fetchone()
+        if previous and previous[0] == batch['import_key']:
+            continue
+        existing = {(json.loads(payload)['norm'].casefold(), json.loads(payload)['code'].strip().casefold()) for (payload,) in con.execute('SELECT payload FROM requirements')}
+        for code in batch['codes']:
+            key = (batch['norm'].casefold(), code.casefold())
+            if key in existing:
+                continue
+            payload = dict(norm=batch['norm'], code=code, source=batch['source'], edition=batch['edition'], source_sha256=batch['source_sha256'])
+            con.execute('INSERT INTO requirements(payload) VALUES (?)', (json.dumps(payload),))
+            existing.add(key)
+            added += 1
+        con.execute('INSERT INTO requirement_imports(norm,import_key) VALUES (?,?) ON CONFLICT(norm) DO UPDATE SET import_key=excluded.import_key', (batch['norm'],batch['import_key']))
+    return added
 
 
 def next_code(con, kind, year):
@@ -185,7 +214,7 @@ class Handler(SimpleHTTPRequestHandler):
                 auditors = catalog(con, 'auditors')
                 requirements = catalog(con, 'requirements')
                 norms = [n for (n,) in con.execute('SELECT name FROM norms ORDER BY id')]
-            return self.send_json(dict(audits=audits, findings=findings, areas=areas, auditors=auditors, requirements=requirements, norms=norms))
+            return self.send_json(dict(audits=audits, findings=findings, areas=areas, auditors=auditors, requirements=requirements, norms=norms, requirement_sources=requirement_sources()))
         if self.path.startswith('/api/'):
             return self.send_json({'error': 'Não encontrado'}, 404)
         super().do_GET()
