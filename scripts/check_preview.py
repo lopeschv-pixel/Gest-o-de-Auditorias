@@ -1,0 +1,109 @@
+"""Browser regression: registered auditors/requirements flow in standalone preview."""
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+html=Path('/tmp/nuclaud-preview/NUCLAUD-v8.html').read_text()
+with sync_playwright() as p:
+    browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
+    for blocked in [False,True]:
+        context=browser.new_context()
+        page=context.new_page()
+        page.set_default_timeout(5000)
+        errors=[]
+        page.on('pageerror',lambda e:errors.append(str(e)))
+        if blocked:
+            page.add_init_script("Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Blocked','SecurityError')}})")
+        page.route('http://127.0.0.1:8123/**',lambda r:r.fulfill(content_type='text/html',body=html))
+        page.goto('http://127.0.0.1:8123/')
+        page.get_by_role('button',name='☷ Cadastrar normas e requisitos',exact=True).click()
+        assert page.locator('#norm-register').is_visible()
+        assert not page.locator('#modal').is_visible()
+        page.get_by_role('button',name='＋ Cadastrar norma',exact=True).click()
+        page.locator('#norm-name').fill('Norma personalizada')
+        page.get_by_role('button',name='Salvar norma',exact=True).click()
+        page.locator('#app').get_by_text('Norma personalizada',exact=True).wait_for()
+        for name,role in [('Ana','leader'),('Bruno','auditor'),('Carla','observer')]:
+            page.get_by_role('button',name='♙ Cadastrar auditores',exact=True).click()
+            page.get_by_role('button',name='＋ Cadastrar auditor',exact=True).click()
+            page.locator('[name=name]').fill(name)
+            assert page.locator('fieldset').filter(has_text='Secretaria Naval').count()==1
+            assert page.locator('fieldset').filter(has_text='Norma personalizada').count()==1
+            page.locator(f'[name=qualification_0][value={role}]').check()
+            if name=='Ana': page.locator('[name=qualification_0][value=auditor]').check()
+            page.locator('[name=qualification_2][value='+('leader' if name=='Ana' else role)+']').check()
+            page.get_by_role('button',name='Salvar auditor',exact=True).click()
+            page.locator('#app').get_by_text(name,exact=True).wait_for()
+        for norm,code in [('ISO 9001:2015','8.4'),('ISO 14001','6.1')]:
+            page.get_by_role('button',name='☷ Cadastrar normas e requisitos',exact=True).click()
+            page.get_by_role('button',name='＋ Cadastrar requisito',exact=True).click()
+            page.locator('[name=norm]').select_option(norm)
+            page.locator('[name=code]').fill(code)
+            page.locator('[name=description]').fill('Requisito de teste '+code)
+            page.get_by_role('button',name='Salvar requisito',exact=True).click()
+            page.locator('#app').get_by_text(norm+' · '+code,exact=True).wait_for()
+        for area in ['Engenharia','Qualidade']:
+            page.get_by_role('button',name='＋ Cadastrar áreas',exact=True).click()
+            page.get_by_role('button',name='＋ Cadastrar área',exact=True).click()
+            page.locator('#area-name').fill(area)
+            page.get_by_role('button',name='Salvar área',exact=True).click()
+            page.locator('#app').get_by_text(area,exact=True).wait_for()
+            page.locator('#area-register').get_by_text('Área salva com sucesso.',exact=True).wait_for()
+            assert not page.locator('#modal').is_visible()
+        page.locator('#area-name').fill('Qualidade')
+        page.get_by_role('button',name='Salvar área',exact=True).click()
+        page.locator('#area-register .form-error').wait_for()
+        page.get_by_role('button',name='＋ Programar auditoria').click()
+        assert page.locator('#modal-title').inner_text()=='Programar auditoria'
+        assert page.locator('#inline-area-name').count()==0
+        assert page.locator('[data-multi=area_names]').count()==1
+        assert page.locator('[data-multi=norms]').count()==1
+        assert not page.locator('[data-multi=norms]').evaluate('(el)=>el.open')
+        page.locator('[data-multi=area_names] summary').click()
+        page.get_by_label('Engenharia',exact=True).check()
+        page.get_by_label('Qualidade',exact=True).check()
+        page.locator('[data-multi=area_names] summary').click()
+        page.locator('[data-multi=norms] summary').click()
+        assert page.get_by_label('Secretaria Naval',exact=True).count()==1
+        assert page.get_by_label('Norma personalizada',exact=True).count()==1
+        page.get_by_label('ISO 9001:2015',exact=True).check()
+        assert page.locator('[name=lead_id] option').all_text_contents()==['Selecione um líder habilitado','Ana']
+        assert page.locator('[name=requirement_ids]').count()==1
+        page.get_by_label('ISO 14001',exact=True).check()
+        assert page.locator('[name=requirement_ids]').count()==2
+        page.locator('[data-multi=norms] summary').click()
+        page.locator('[name=lead_id]').select_option(label='Ana')
+        page.get_by_label('Bruno',exact=True).check()
+        page.get_by_label('Carla',exact=True).check()
+        page.locator('[name=requirement_ids]').first.check()
+        page.get_by_role('button',name='Salvar programação',exact=True).click()
+        page.get_by_text('Selecione pelo menos um requisito para cada norma.',exact=True).wait_for()
+        page.locator('[name=requirement_ids]').last.check()
+        page.get_by_role('button',name='Salvar programação',exact=True).click()
+        page.get_by_role('button',name='Editar programação').wait_for()
+        page.get_by_role('button',name='Editar programação').click()
+        assert page.locator('[name=area_names]:checked').count()==2
+        assert page.locator('[name=norms]:checked').count()==2
+        page.get_by_role('button',name='Salvar programação',exact=True).click()
+        page.get_by_role('button',name='Gerar plano',exact=True).click()
+        assert page.locator('[name=lead_id] option:checked').inner_text()=='Ana'
+        assert page.locator('[name=team_ids]:checked').count()==1
+        assert page.locator('[name=observer_ids]:checked').count()==1
+        assert page.locator('[name=requirement_ids]:checked').count()==2
+        page.locator('[name=date]').fill('2027-03-10')
+        page.get_by_role('button',name='Salvar plano para conferência').click()
+        page.get_by_role('button',name='Confirmar plano',exact=True).click()
+        page.get_by_role('button',name='Gerar PDF do plano').wait_for()
+        assert 'Engenharia · Qualidade' in page.locator('#app').inner_text()
+        assert 'Bruno' in page.locator('#app').inner_text()
+        assert 'Carla' in page.locator('#app').inner_text()
+        if blocked:
+            page.locator('#storage-warning').wait_for()
+        else:
+            page.reload()
+            page.get_by_role('button',name='♙ Cadastrar auditores',exact=True).click()
+            page.locator('#app').get_by_text('Ana',exact=True).wait_for()
+            page.get_by_role('button',name='☷ Cadastrar normas e requisitos',exact=True).click()
+            page.locator('#app').get_by_text('ISO 14001 · 6.1',exact=True).wait_for()
+        assert not errors,errors
+        print('PASS: cadastros, habilitações por norma, filtros, programação, plano e persistência; armazenamento bloqueado:',blocked)
+        context.close()
+    browser.close()
