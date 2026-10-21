@@ -361,6 +361,15 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({'ok':True},200,token)
             if user['role'] != 'admin' and not (self.path.startswith('/api/audits/') and self.command == 'PUT' or self.path == '/api/findings' and self.command == 'POST' or self.path.startswith('/api/findings/') and self.command in ['PUT','DELETE']):
                 raise PermissionError('Esta operação exige perfil Administrador')
+            if self.path.startswith('/api/audits/') and self.command=='DELETE':
+                aid=int(self.path.split('/')[-1])
+                with connection() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    if not con.execute('SELECT 1 FROM audits WHERE id=?',(aid,)).fetchone():
+                        return self.send_json({'error':'Auditoria não encontrada'},404)
+                    con.execute('DELETE FROM findings WHERE audit_id=?',(aid,))
+                    con.execute('DELETE FROM audits WHERE id=?',(aid,))
+                return self.send_json({'ok':True})
             if self.path == '/api/users' and self.command == 'POST':
                 with connection() as con:
                     con.execute('BEGIN IMMEDIATE')

@@ -69,6 +69,21 @@ with sync_playwright() as p:
     page.get_by_role('button',name='◫ Calendário',exact=True).click()
     assert page.locator('.audit-card.audit-color-completed').count()==0
     assert page.locator('.audit-card.audit-color-quality').count()==2
+    first_id=page.locator('[data-delete-audit]').first.get_attribute('data-delete-audit')
+    page.once('dialog',lambda d:d.dismiss())
+    page.locator('[data-delete-audit]').first.click()
+    assert page.locator('.audit-card').count()==5
+    page.once('dialog',lambda d:d.accept())
+    page.locator('[data-delete-audit]').first.click()
+    assert page.locator('.audit-card').count()==4
+    assert page.locator(f'.audit-card[data-open="{first_id}"]').count()==0
+    page.reload()
+    page.locator('#year').select_option('2027')
+    page.get_by_role('button',name='◫ Calendário',exact=True).click()
+    assert page.locator('.audit-card').count()==4
+    page.locator('#demo-profile').select_option(label='Ana — Usuário')
+    assert page.locator('[data-delete-audit]').count()==0
+    assert page.evaluate("async()=>{try{await api('audits/'+data.audits[0].id,'DELETE',{});return false;}catch(e){return e.message.includes('Administrador');}}")
     assert not errors,errors
     browser.close()
 print('PASS: calendar colors and norm filter, cancellation/deletion, admin corrections, regular readonly access and revalidated completion.')

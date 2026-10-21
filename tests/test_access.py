@@ -100,6 +100,22 @@ class AccessWorkflow(unittest.TestCase):
         self.call(self.regular,'findings/'+str(draft_id),{},'DELETE')
         self.assertEqual(len(self.call(self.regular,'data')['findings']),0)
 
+    def test_delete_audit_admin_only_and_preserves_sequences(self):
+        path='audits/'+str(self.own['id'])
+        self.fails(401,self.client(),path,{},'DELETE')
+        self.fails(403,self.regular,path,{},'DELETE')
+        with server.connection() as con:
+            con.execute('INSERT INTO findings(audit_id,payload) VALUES (?,?)',(self.own['id'],json.dumps(dict(kind='Observação',description='Anotação',audit_id=self.own['id']))))
+        self.call(self.admin,path,{},'DELETE')
+        state=self.call(self.admin,'data')
+        self.assertEqual([a['id'] for a in state['audits']],[self.other['id']])
+        self.assertFalse(state['findings'])
+        self.assertTrue(state['auditors'])
+        self.assertTrue(state['requirements'])
+        self.fails(404,self.admin,path,{},'DELETE')
+        new=self.make_audit(0)
+        self.assertEqual(new['code'],'AUDI-I-003-2027')
+
     def test_administrator_can_edit_auditors_preserving_links(self):
         aid=self.auditors[0]['id'];path='auditors/'+str(aid)
         body=dict(name='Ana corrigida',qualifications={'ISO 9001:2015':['leader','auditor','observer'],'ISO 45001':['auditor']})
