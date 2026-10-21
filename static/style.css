@@ -44,3 +44,5 @@ button:disabled{opacity:.4;cursor:not-allowed}.calendar-item{border-top:1px soli
 .supplier-fields{display:contents}@media print{.audit-document{min-height:265mm;display:flex;flex-direction:column}.doc-section,.doc-header,.doc-footer{flex-shrink:0}.doc-signature{margin-top:auto;padding-top:15mm;flex-shrink:0}}
 
 .process-norm-group{width:100%}.process-required{padding:10px 12px;margin:6px 0 12px 20px;border-left:2px solid #a3b9ac}.process-required summary{cursor:pointer;font-size:12px}.process-required .requirement-options{width:100%}
+
+#process-register input[type=checkbox],#fields .process-norm-group input[type=checkbox]{flex:0 0 16px;min-width:0;width:16px;height:16px;margin:2px 0 0;padding:0}#process-register .process-norm-group label,#fields .process-norm-group label{display:flex!important;flex-direction:row!important;justify-content:flex-start;align-items:flex-start;gap:8px;text-align:left;width:100%;margin-left:0}#process-register .process-required,#fields .process-required{margin-left:0;padding-left:0;border-left:0}.process-required .requirement-options{padding:8px 0}.process-norm-group{min-width:0;text-align:left}

@@ -86,7 +86,7 @@ with sync_playwright() as p:
         page.locator('#fields').get_by_label('ISO 9001:2015',exact=True).check()
         assert page.locator('[name=lead_id][type=radio]').count()==1
         assert page.locator('[name=requirement_ids]').count()>20
-        assert page.evaluate("[...document.querySelectorAll('[name=requirement_ids]')].every(x=>/ · \\d+\\.\\d+ — /.test(x.closest('label').textContent))")
+        assert page.evaluate("[...document.querySelectorAll('[name=requirement_ids]')].every(x=>/ · \\d+\\.\\d+(?:\\.\\d+)? — /.test(x.closest('label').textContent))")
         page.locator('#fields').get_by_label('ISO 14001',exact=True).check()
         assert page.locator('[name=requirement_ids]').count()>40
         page.locator('[data-multi=norms] summary').click()

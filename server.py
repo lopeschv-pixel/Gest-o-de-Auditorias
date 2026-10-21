@@ -32,6 +32,9 @@ def connection():
     for column in ['norms','history','mandatory_requirement_ids']:
         if column not in columns:
             con.execute(f"ALTER TABLE processes ADD COLUMN {column} TEXT NOT NULL DEFAULT '[]'")
+    for table in ['macroprocesses','processes']:
+        if 'deleted' not in {row[1] for row in con.execute(f'PRAGMA table_info({table})')}:
+            con.execute(f'ALTER TABLE {table} ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0')
     access.schema(con)
     con.execute('CREATE TABLE IF NOT EXISTS norms (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)')
     for name in NORMS:
@@ -131,7 +134,7 @@ def check_area(con, data):
 
 
 def process_catalog(con):
-    return dict(macroprocesses=[dict(id=i,name=n) for i,n in con.execute('SELECT id,name FROM macroprocesses ORDER BY name')],processes=[dict(id=i,macroprocess_id=m,name=n,norms=json.loads(ns),history=json.loads(h),mandatory_requirement_ids=json.loads(req)) for i,m,n,ns,h,req in con.execute('SELECT id,macroprocess_id,name,norms,history,mandatory_requirement_ids FROM processes ORDER BY name')])
+    return dict(macroprocesses=[dict(id=i,name=n) for i,n in con.execute('SELECT id,name FROM macroprocesses WHERE deleted=0 ORDER BY name')],processes=[dict(id=i,macroprocess_id=m,name=n,norms=json.loads(ns),history=json.loads(h),mandatory_requirement_ids=json.loads(req)) for i,m,n,ns,h,req in con.execute('SELECT id,macroprocess_id,name,norms,history,mandatory_requirement_ids FROM processes WHERE deleted=0 AND macroprocess_id IN (SELECT id FROM macroprocesses WHERE deleted=0) ORDER BY name')])
 
 
 def validate_process_norms(data,con=None):
@@ -447,6 +450,43 @@ class Handler(SimpleHTTPRequestHandler):
                     con.execute('DELETE FROM findings WHERE audit_id=?',(aid,))
                     con.execute('DELETE FROM audits WHERE id=?',(aid,))
                 return self.send_json({'ok':True})
+            if self.path.startswith('/api/users/') and self.command in ['PUT','DELETE']:
+                uid=int(self.path.split('/')[-1])
+                with connection() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    old=next((u for u in access.users(con) if u['id']==uid),None)
+                    if not old:
+                        return self.send_json({'error':'Usuário não encontrado'},404)
+                    updated=access.validate_user(data,catalog(con,'auditors')) if self.command=='PUT' else None
+                    if old['role']=='admin' and (updated is None or updated['role']!='admin') and con.execute("SELECT count(*) FROM users WHERE role='admin'").fetchone()[0]<=1:
+                        raise ValueError('Mantenha pelo menos um administrador no sistema')
+                    if self.command=='DELETE':
+                        con.execute('DELETE FROM sessions WHERE user_id=?',(uid,))
+                        con.execute('DELETE FROM users WHERE id=?',(uid,))
+                    else:
+                        if any(u['id']!=uid and u['username']==updated['username'] for u in access.users(con)):
+                            raise ValueError('Nome de rede já cadastrado')
+                        con.execute('UPDATE users SET username=?,full_name=?,email=?,role=?,auditor_id=? WHERE id=?',(updated['username'],updated['full_name'],updated['email'],updated['role'],updated['auditor_id'],uid))
+                return self.send_json({'ok':True})
+            if self.path.startswith('/api/macroprocesses/') and self.command in ['PUT','DELETE'] or self.path.startswith('/api/processes/') and self.command=='DELETE':
+                table=self.path.split('/')[2];rid=int(self.path.split('/')[-1])
+                with connection() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    old=con.execute(f'SELECT name FROM {table} WHERE id=? AND deleted=0',(rid,)).fetchone()
+                    if not old:
+                        return self.send_json({'error':'Cadastro não encontrado'},404)
+                    if self.command=='PUT':
+                        name=str(data.get('name','')).strip()
+                        if not name or len(name)>150:
+                            raise ValueError('Informe um nome de até 150 caracteres')
+                        if any(i!=rid and n.casefold()==name.casefold() for i,n in con.execute('SELECT id,name FROM macroprocesses')):
+                            raise ValueError('Macroprocesso já cadastrado')
+                        con.execute('UPDATE macroprocesses SET name=? WHERE id=?',(name,rid))
+                    else:
+                        con.execute(f'UPDATE {table} SET deleted=1 WHERE id=?',(rid,))
+                        if table=='macroprocesses':
+                            con.execute('UPDATE processes SET deleted=1 WHERE macroprocess_id=?',(rid,))
+                return self.send_json({'ok':True})
             if self.path == '/api/users' and self.command == 'POST':
                 with connection() as con:
                     con.execute('BEGIN IMMEDIATE')
@@ -459,20 +499,29 @@ class Handler(SimpleHTTPRequestHandler):
                 with connection() as con:
                     con.execute('BEGIN IMMEDIATE')
                     if self.path=='/api/macroprocesses':
-                        if any(n.casefold()==name.casefold() for (n,) in con.execute('SELECT name FROM macroprocesses')):
+                        old=next(((i,d) for i,n,d in con.execute('SELECT id,name,deleted FROM macroprocesses') if n.casefold()==name.casefold()),None)
+                        if old and not old[1]:
                             raise ValueError('Macroprocesso já cadastrado')
-                        rid=con.execute('INSERT INTO macroprocesses(name) VALUES (?)',(name,)).lastrowid
+                        if old:
+                            rid=old[0];con.execute('UPDATE macroprocesses SET deleted=0,name=? WHERE id=?',(name,rid))
+                        else:
+                            rid=con.execute('INSERT INTO macroprocesses(name) VALUES (?)',(name,)).lastrowid
                         result=dict(id=rid,name=name)
                     else:
                         mid=int(data.get('macroprocess_id') or 0)
-                        if not con.execute('SELECT 1 FROM macroprocesses WHERE id=?',(mid,)).fetchone():
+                        if not con.execute('SELECT 1 FROM macroprocesses WHERE id=? AND deleted=0',(mid,)).fetchone():
                             raise ValueError('Selecione um macroprocesso cadastrado')
-                        if any(n.casefold()==name.casefold() for (n,) in con.execute('SELECT name FROM processes WHERE macroprocess_id=?',(mid,))):
+                        old=next(((i,d,h) for i,n,d,h in con.execute('SELECT id,name,deleted,history FROM processes WHERE macroprocess_id=?',(mid,)) if n.casefold()==name.casefold()),None)
+                        if old and not old[1]:
                             raise ValueError('Processo já cadastrado neste macroprocesso')
                         ns=validate_process_norms(data,con)
                         after=dict(name=name,macroprocess_id=mid,norms=ns,mandatory_requirement_ids=validate_mandatory(con,data,ns))
                         history=[process_event(user,None,after)]
-                        rid=con.execute('INSERT INTO processes(macroprocess_id,name,norms,history,mandatory_requirement_ids) VALUES (?,?,?,?,?)',(mid,name,json.dumps(ns),json.dumps(history),json.dumps(after['mandatory_requirement_ids']))).lastrowid
+                        if old:
+                            rid=old[0];history=json.loads(old[2])+history
+                            con.execute('UPDATE processes SET deleted=0,name=?,norms=?,history=?,mandatory_requirement_ids=? WHERE id=?',(name,json.dumps(ns),json.dumps(history),json.dumps(after['mandatory_requirement_ids']),rid))
+                        else:
+                            rid=con.execute('INSERT INTO processes(macroprocess_id,name,norms,history,mandatory_requirement_ids) VALUES (?,?,?,?,?)',(mid,name,json.dumps(ns),json.dumps(history),json.dumps(after['mandatory_requirement_ids']))).lastrowid
                         result=dict(id=rid,**after,history=history)
                 return self.send_json(result,201)
             if self.path.startswith('/api/processes/') and self.command=='PUT':
@@ -484,7 +533,7 @@ class Handler(SimpleHTTPRequestHandler):
                     old=next((p for p in process_catalog(con)['processes'] if p['id']==pid),None)
                     if not old:
                         return self.send_json({'error':'Processo não encontrado'},404)
-                    if not con.execute('SELECT 1 FROM macroprocesses WHERE id=?',(mid,)).fetchone():
+                    if not con.execute('SELECT 1 FROM macroprocesses WHERE id=? AND deleted=0',(mid,)).fetchone():
                         raise ValueError('Selecione um macroprocesso cadastrado')
                     if any(p['id']!=pid and p['macroprocess_id']==mid and p['name'].casefold()==name.casefold() for p in process_catalog(con)['processes']):
                         raise ValueError('Processo já cadastrado neste macroprocesso')

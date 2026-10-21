@@ -79,7 +79,7 @@ Na Administração, cadastre macroprocessos e seus processos vinculados. A progr
 
 `node tests/test_reporting.cjs` valida as classificações e a composição dos documentos. `python scripts/check_reports_pdf.py` verifica os formulários no navegador e gera PDFs A4 de plano, relatório interno longo e relatório de fornecedor, conferindo conteúdo e margens.
 
-A programação e o plano oferecem requisitos de dois níveis (ex.: 4.1), ordenados numericamente por norma. O auditor líder é escolhido por marcação única. Seletores múltiplos fecham ao clicar fora ou em Concluir seleção. O plano inclui nome/e-mail do gestor; objetivo e escopo aparecem apenas para fornecedores.
+A programação e o plano oferecem requisitos com até duas subdivisões abaixo do capítulo (ex.: 4.4 e 4.4.1), ordenados numericamente por norma. O auditor líder é escolhido por marcação única. Seletores múltiplos fecham ao clicar fora ou em Concluir seleção. O plano inclui nome/e-mail do gestor; objetivo e escopo aparecem apenas para fornecedores.
 
 Conformidades registram requisitos e evidência encontrada, sem descrição adicional. O botão Concluir relatório exige que todos os IDs de requisitos do plano tenham uma conformidade ou não conformidade; observações e oportunidades não substituem essa classificação. O servidor aplica a mesma regra. O PDF inclui uma linha com o texto Assinatura do auditor líder no final da última página, sem campo de data.
 
@@ -110,3 +110,7 @@ Cada processo tem uma ou mais normas aplicáveis. Abaixo de cada norma marcada, 
 Os requisitos aplicáveis cadastrados em cada processo entram automaticamente ao selecioná-lo na programação. Eles formam a seleção mínima; a lista continua disponível para acrescentar outros requisitos das normas escolhidas, que também seguem para o plano e precisam ser classificados no relatório.
 
 A conclusão de fornecedores tem seleção única: Não qualificado, Qualificado por um ano ou Qualificado por três anos. O resultado é obrigatório para concluir, enquanto a caixa Observações da conclusão pode ficar vazia. O Número do RQF permanece disponível. Resultado, observações e RQF aparecem no resumo e no PDF. Textos de conclusão de relatórios antigos são preservados como observações, sem atribuição automática de um resultado.
+
+Administradores têm Editar e Excluir em todos os registros de macroprocessos, processos e usuários. A exclusão de macroprocesso retira também seus processos das novas seleções; auditorias e documentos existentes preservam os dados já registrados. No servidor, os catálogos são arquivados e podem ser recadastrados sem perder o histórico. A edição de usuários preserva a senha; exclusão revoga suas sessões. O último administrador não pode ser excluído ou rebaixado, para manter acesso à administração.
+
+Os requisitos no cadastro do processo ficam alinhados à esquerda e incluem códigos como 4.4 e 4.4.1, em ordem numérica, excluindo itens mais profundos como 4.4.1.1. `python scripts/check_admin_catalogs.py` verifica alinhamento no computador/celular, níveis, ordenação e os três conjuntos de botões administrativos.
