@@ -56,6 +56,33 @@ class AccessWorkflow(unittest.TestCase):
         aid=self.call(self.admin,'audits',dict(audit_type='I',macroprocess_ids=[self.macro['id']],process_ids=[self.process['id']],year=2027,month=3,area='Qualidade',norms=['ISO 9001:2015'],lead=self.auditors[leader]['name'],lead_id=self.auditors[leader]['id'],team_ids=[self.auditors[1-leader]['id']],requirement_ids=[self.req['id']],requirements='8.4',status='Programada'))['id']
         return next(a for a in self.call(self.admin,'data')['audits'] if a['id']==aid)
 
+    def test_edit_findings_authorization_and_revalidate_completion(self):
+        plan={k:self.own[k] for k in ['lead','lead_id','team_ids','norms','requirement_ids','requirements']}
+        plan.update(date='2027-03-10',confirmed=True)
+        self.own.update(plan=plan,status='Planejada')
+        self.call(self.regular,'audits/'+str(self.own['id']),self.own,'PUT')
+        body=dict(audit_id=self.own['id'],kind='Conformidade',requirement_ids=[self.req['id']],evidence='Evidência original')
+        fid=self.call(self.regular,'findings',body)['id']
+        path='findings/'+str(fid)
+        self.call(self.regular,path,dict(body,evidence='Evidência corrigida'),'PUT')
+        self.fails(401,self.client(),path,body,'PUT')
+        self.fails(400,self.admin,path,dict(body,audit_id=self.other['id']),'PUT')
+        # Another leader cannot edit an existing finding even when sending its current audit ID.
+        result=self.call(self.admin,'users',dict(username='bruno.rede',full_name='Bruno',email='bruno@example.com',role='user',auditor_id=self.auditors[1]['id']))
+        other=self.client();self.call(other,'login',dict(username='bruno.rede',password=result['temporary_password']))
+        self.fails(403,other,path,body,'PUT')
+        observation=dict(audit_id=self.own['id'],kind='Observação',description='Verificar periodicamente')
+        self.call(self.regular,path,observation,'PUT')
+        state=self.call(self.regular,'data');finding=next(f for f in state['findings'] if f['id']==fid)
+        self.assertNotIn('requirement_ids',finding)
+        final=dict(self.own,status='Concluída',report={})
+        self.fails(400,self.regular,'audits/'+str(self.own['id']),final,'PUT')
+        self.call(self.regular,path,body,'PUT')
+        self.call(self.regular,'audits/'+str(self.own['id']),final,'PUT')
+        self.fails(400,self.regular,path,dict(body,evidence='Alteração após conclusão'),'PUT')
+        self.fails(400,self.regular,'findings',body)
+        self.assertEqual(len(self.call(self.regular,'data')['findings']),1)
+
     def test_authentication_and_passwords_are_not_exposed(self):
         anonymous=self.client()
         self.fails(401,anonymous,'data')

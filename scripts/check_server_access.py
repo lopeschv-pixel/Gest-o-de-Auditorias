@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory() as directory:
             page.locator('[name=participants]').fill('Ana')
             assert page.locator('[name=conclusion]').count()==0
             page.locator('[name=participants]').fill('Ana, participante de teste')
-            page.get_by_role('button',name='Salvar registro',exact=True).click()
+            page.locator('#modal').get_by_role('button',name='Salvar relatório',exact=True).click()
             page.get_by_text('Ana, participante de teste',exact=True).wait_for()
             assert not errors,errors
             browser.close()

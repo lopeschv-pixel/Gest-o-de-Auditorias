@@ -192,7 +192,7 @@ with sync_playwright() as p:
         page.locator('[name=participants]').fill('Ana')
         assert page.locator('[name=conclusion]').count()==0
         page.locator('[name=participants]').fill('Ana e Bruno, participantes')
-        page.get_by_role('button',name='Salvar registro',exact=True).click()
+        page.locator('#modal').get_by_role('button',name='Salvar relatório',exact=True).click()
         assert 'Ana e Bruno, participantes' in page.locator('#app').inner_text()
         page.locator('#demo-profile').select_option(label='Administrador da demonstração — Administrador')
         page.get_by_role('button',name='♙ Cadastrar usuários',exact=True).click()

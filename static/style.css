@@ -31,3 +31,6 @@ button:disabled{opacity:.4;cursor:not-allowed}.calendar-item{border-top:1px soli
 
 @media print{.doc-signature{margin:8mm 0 4mm;display:flex;flex-direction:column;align-items:center;gap:2mm;break-inside:avoid;font-size:9pt}.doc-signature>div{width:90mm;border-top:1px solid #456052}.doc-signature>span{font-size:8pt}}
 .multi-done{display:block;margin:8px auto}.checks input[type=radio]{accent-color:#215b42}
+
+.finding-heading-label{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.finding-card-heading{align-items:center}.report-validation{white-space:pre-wrap;color:#953a32;border-color:#d7a29b;background:#fff3f0}#fields .finding-list{padding:0}#fields .finding-heading-label{flex-direction:row}
+@media print{.finding-card-heading button{display:none!important}}
