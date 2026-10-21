@@ -4,6 +4,7 @@ import threading
 import unittest
 import urllib.request
 import urllib.error
+import http.cookiejar
 from pathlib import Path
 from http.server import ThreadingHTTPServer
 import server
@@ -11,6 +12,7 @@ import server
 class Workflow(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.original_db=server.DB
         cls.preload=server.PRELOAD_REQUIREMENTS
         server.PRELOAD_REQUIREMENTS=False
         cls.tmp = tempfile.TemporaryDirectory()
@@ -23,6 +25,11 @@ class Workflow(unittest.TestCase):
         cls.http = ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
         threading.Thread(target=cls.http.serve_forever, daemon=True).start()
         cls.url = 'http://127.0.0.1:' + str(cls.http.server_port)
+        cls.opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        body=dict(username='admin',full_name='Administrador teste',email='admin@example.com',password='Example-test-password')
+        req=urllib.request.Request(cls.url+'/api/setup',data=json.dumps(body).encode(),headers={'Content-Type':'application/json'})
+        with cls.opener.open(req) as response:
+            assert response.status==201
 
     @classmethod
     def tearDownClass(cls):
@@ -30,10 +37,11 @@ class Workflow(unittest.TestCase):
         cls.http.server_close()
         cls.tmp.cleanup()
         server.PRELOAD_REQUIREMENTS=cls.preload
+        server.DB=cls.original_db
 
     def request(self, path, body=None, method=None):
         req = urllib.request.Request(self.url+path, data=json.dumps(body).encode() if body else None, headers={'Content-Type':'application/json'}, method=method)
-        with urllib.request.urlopen(req) as r:
+        with self.opener.open(req) as r:
             return json.load(r)
 
     def test_full_workflow_and_pac_validation(self):
@@ -105,12 +113,12 @@ class Workflow(unittest.TestCase):
 
     def test_catalog_validation_and_qualification_filters(self):
         member = self.request('/api/auditors',dict(name='Somente auditor',qualifications={'ISO 9001:2015':['auditor']}))
-        req = self.request('/api/requirements',dict(norm='ISO 14001',code='6.1',description='Aspectos ambientais'))
+        req = self.request('/api/requirements',dict(norm='ISO 14001',code='6.1',title='Aspectos ambientais',description='Aspectos ambientais'))
         for payload in [dict(name='Sem habilitação',qualifications={}),dict(name='Inválido',qualifications={'ASME III':'inventado'})]:
             with self.assertRaises(urllib.error.HTTPError):
                 self.request('/api/auditors',payload)
         with self.assertRaises(urllib.error.HTTPError):
-            self.request('/api/requirements',dict(norm='ISO 14001',code='6.1',description='Duplicado'))
+            self.request('/api/requirements',dict(norm='ISO 14001',code='6.1',title='Aspectos ambientais',description='Duplicado'))
         self.request('/api/areas',{'name':'SMS'})
         audit=dict(audit_type='I',year=2032,month=6,area='SMS',lead='Auditor líder',requirements='Seleção',norms=['ISO 9001:2015'],lead_id=1,team_ids=[],requirement_ids=[1],status='Programada')
         for payload in [dict(audit,lead_id=member['id']),dict(audit,requirement_ids=[req['id']]),dict(audit,norms=['ISO 9001:2015','ASME III']),dict(audit,team_ids=[1])]:
@@ -128,8 +136,8 @@ class Workflow(unittest.TestCase):
             self.request('/api/norms', {'name':' norma de teste '})
         leader=self.request('/api/auditors',dict(name='Líder naval',qualifications={'Secretaria Naval':['leader'],'Norma de teste':['leader','auditor']}))
         auditor=self.request('/api/auditors',dict(name='Auditor naval',qualifications={'Secretaria Naval':['auditor']}))
-        req=self.request('/api/requirements',dict(norm='Secretaria Naval',code='N1',description='Requisito naval'))
-        self.request('/api/requirements',dict(norm='Norma de teste',code='T1',description='Requisito adicional'))
+        req=self.request('/api/requirements',dict(norm='Secretaria Naval',code='N1',title='Requisito naval',description='Requisito naval'))
+        self.request('/api/requirements',dict(norm='Norma de teste',code='T1',title='Requisito adicional',description='Requisito adicional'))
         self.request('/api/areas',{'name':'Naval'})
         audit=dict(audit_type='I',year=2035,month=2,area='Naval',lead='Líder naval',requirements='N1',norms=['Secretaria Naval'],lead_id=leader['id'],team_ids=[auditor['id']],requirement_ids=[req['id']],status='Programada')
         self.request('/api/audits',audit)
@@ -148,8 +156,9 @@ class Workflow(unittest.TestCase):
         self.assertEqual(saved['qualifications']['Norma de teste'],['leader','auditor'])
 
     def test_requirement_without_description_and_multiple_periods(self):
-        req=self.request('/api/requirements',dict(norm='ISO 45001',code='8.1'))
+        req=self.request('/api/requirements',dict(norm='ISO 45001',code='8.1',title='Controle operacional'))
         self.assertNotIn('description',req)
+        self.assertEqual(req['title'],'Controle operacional')
         self.request('/api/areas',{'name':'Operação'})
         audit=dict(audit_type='I',year=2037,month=3,area='Operação',lead='Auditor líder',requirements='8.1',norms=['ISO 45001'],lead_id=1,team_ids=[],requirement_ids=[req['id']],status='Programada')
         aid=self.request('/api/audits',audit)['id']
@@ -177,10 +186,23 @@ class Workflow(unittest.TestCase):
             self.assertEqual(server.seed_requirements(con),0)
             rows=server.catalog(con,'requirements')
             self.assertEqual(len(rows),339)
+            self.assertTrue(all(r.get('title') for r in rows))
+            self.assertEqual(next(r for r in rows if r['norm']=='ISO 9001:2015' and r['code']=='8.4')['title'],'Controle de fornecimento externo')
             self.assertEqual(next(r for r in rows if r['norm']=='ISO 9001:2015' and r['code']=='8.4')['custom'],manual['custom'])
             self.assertEqual({r['norm'] for r in rows},{'ISO 9001:2015','ISO 14001','ISO 45001','ANSN 1.16'})
             self.assertTrue(any(r['norm']=='ANSN 1.16' and r['code']=='4.13.2.2' for r in rows))
             self.assertTrue(all('description' not in r for r in rows))
+
+    def test_administrator_can_edit_requirement_title(self):
+        self.request('/api/requirements/1',{'title':'Título personalizado'},'PUT')
+        state=self.request('/api/data')
+        req=next(r for r in state['requirements'] if r['id']==1)
+        self.assertEqual(req['title'],'Título personalizado')
+        self.assertEqual(req['code'],'8.4')
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request('/api/requirements/1',{'title':''},'PUT')
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request('/api/requirements',{'norm':'ISO 9001:2015','code':'CUSTOM-MISSING-TITLE'})
 
     def test_ui_is_served(self):
         with urllib.request.urlopen(self.url+'/') as r:

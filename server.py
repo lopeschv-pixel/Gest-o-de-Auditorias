@@ -1,6 +1,10 @@
 import json
 import os
 import sqlite3
+import access
+import hashlib
+import secrets
+from urllib.parse import urlsplit
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -20,6 +24,7 @@ def connection():
     con.execute('CREATE TABLE IF NOT EXISTS counters (kind TEXT, year INTEGER, sequence INTEGER NOT NULL, PRIMARY KEY(kind,year))')
     con.execute('CREATE TABLE IF NOT EXISTS auditors (id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
     con.execute('CREATE TABLE IF NOT EXISTS requirements (id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
+    access.schema(con)
     con.execute('CREATE TABLE IF NOT EXISTS norms (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)')
     for name in NORMS:
         con.execute('INSERT OR IGNORE INTO norms(name) VALUES (?)', (name,))
@@ -60,14 +65,18 @@ def seed_requirements(con):
         previous = con.execute('SELECT import_key FROM requirement_imports WHERE norm=?', (batch['norm'],)).fetchone()
         if previous and previous[0] == batch['import_key']:
             continue
-        existing = {(json.loads(payload)['norm'].casefold(), json.loads(payload)['code'].strip().casefold()) for (payload,) in con.execute('SELECT payload FROM requirements')}
+        existing = {(json.loads(payload)['norm'].casefold(), json.loads(payload)['code'].strip().casefold()): (rid,json.loads(payload)) for rid,payload in con.execute('SELECT id,payload FROM requirements')}
         for code in batch['codes']:
             key = (batch['norm'].casefold(), code.casefold())
             if key in existing:
+                rid, current = existing[key]
+                if not current.get('title') and batch.get('titles', {}).get(code):
+                    current['title'] = batch['titles'][code]
+                    con.execute('UPDATE requirements SET payload=? WHERE id=?', (json.dumps(current),rid))
                 continue
-            payload = dict(norm=batch['norm'], code=code, source=batch['source'], edition=batch['edition'], source_sha256=batch['source_sha256'])
+            payload = dict(norm=batch['norm'], code=code, title=batch.get('titles', {}).get(code, ''), source=batch['source'], edition=batch['edition'], source_sha256=batch['source_sha256'])
             con.execute('INSERT INTO requirements(payload) VALUES (?)', (json.dumps(payload),))
-            existing.add(key)
+            existing[key] = (None, payload)
             added += 1
         con.execute('INSERT INTO requirement_imports(norm,import_key) VALUES (?,?) ON CONFLICT(norm) DO UPDATE SET import_key=excluded.import_key', (batch['norm'],batch['import_key']))
     return added
@@ -133,7 +142,7 @@ def check_selections(con, data, required=False):
         raise ValueError('Selecione um requisito para cada norma')
     data['lead'] = leader['name']
     data['team'] = ', '.join(next(a['name'] for a in auditors if a['id'] == aid) for aid in team_ids)
-    data['requirements'] = '\n'.join(f"{r['norm']} · {r['code']}" for r in selected)
+    data['requirements'] = '\n'.join(f"{r['norm']} · {r['code']} — {r.get('title', '')}" for r in selected)
 
 
 def validate_periods(periods):
@@ -197,16 +206,33 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT / 'static'), **kwargs)
 
-    def send_json(self, data, status=200):
+    def send_json(self, data, status=200, token=None):
         body = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Cache-Control', 'no-store')
+        if token is not None:
+            secure = '; Secure' if self.headers.get('X-Forwarded-Proto') == 'https' else ''
+            self.send_header('Set-Cookie', f'nuclaud_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={access.SESSION_SECONDS if token else 0}{secure}')
         self.end_headers()
         self.wfile.write(body)
 
+    def user(self):
+        with connection() as con:
+            return access.current_user(con, self.headers.get('Cookie'))
+
     def do_GET(self):
+        if self.path == '/healthz':
+            return self.send_json({'ok':True})
+        if self.path == '/api/session':
+            with connection() as con:
+                user = access.current_user(con, self.headers.get('Cookie'))
+                needs_setup = con.execute('SELECT count(*) FROM users').fetchone()[0] == 0
+            return self.send_json(dict(user=user, needs_setup=needs_setup))
+        if self.path.startswith('/api/') and not self.user():
+            return self.send_json({'error':'Entre com seu nome de rede e senha'}, 401)
         if self.path == '/api/data':
+            user = self.user()
             with connection() as con:
                 audits = [dict(json.loads(p), id=i) for i, p in con.execute('SELECT id,payload FROM audits ORDER BY id DESC')]
                 findings = [dict(json.loads(p), id=i, audit_id=a) for i, a, p in con.execute('SELECT id,audit_id,payload FROM findings ORDER BY id')]
@@ -214,7 +240,11 @@ class Handler(SimpleHTTPRequestHandler):
                 auditors = catalog(con, 'auditors')
                 requirements = catalog(con, 'requirements')
                 norms = [n for (n,) in con.execute('SELECT name FROM norms ORDER BY id')]
-            return self.send_json(dict(audits=audits, findings=findings, areas=areas, auditors=auditors, requirements=requirements, norms=norms, requirement_sources=requirement_sources()))
+                users = access.users(con) if user['role'] == 'admin' else []
+            if user['role'] != 'admin':
+                audits = [a for a in audits if access.can_manage(user,a)]
+                findings = [f for f in findings if any(a['id']==f['audit_id'] for a in audits)]
+            return self.send_json(dict(current_user=user,users=users,audits=audits, findings=findings, areas=areas, auditors=auditors, requirements=requirements, norms=norms, requirement_sources=requirement_sources()))
         if self.path.startswith('/api/'):
             return self.send_json({'error': 'Não encontrado'}, 404)
         super().do_GET()
@@ -233,6 +263,66 @@ class Handler(SimpleHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise ValueError('Dados inválidos')
+            origin = self.headers.get('Origin')
+            if origin and urlsplit(origin).netloc != self.headers.get('Host'):
+                raise PermissionError('Origem de solicitação não permitida')
+            if not self.headers.get('Content-Type', '').startswith('application/json'):
+                raise ValueError('Use Content-Type application/json')
+            if self.path == '/api/setup' and self.command == 'POST':
+                setup_token = os.environ.get('NUCLAUD_SETUP_TOKEN')
+                local = self.client_address[0] in ['127.0.0.1', '::1'] and not self.headers.get('X-Forwarded-For')
+                if not local and (not setup_token or not secrets.compare_digest(str(data.get('setup_token', '')), setup_token)):
+                    raise PermissionError('Informe a chave de instalação configurada no servidor')
+                with connection() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    if con.execute('SELECT 1 FROM users').fetchone():
+                        raise PermissionError('Administrador inicial já cadastrado')
+                    user, _ = access.create_user(con, dict(data, role='admin'), catalog(con,'auditors'), password=data.get('password',''))
+                    token = access.session(con,user['id'])
+                return self.send_json(dict(user=user),201,token)
+            if self.path == '/api/login' and self.command == 'POST':
+                with connection() as con:
+                    row = con.execute('SELECT id,password_hash FROM users WHERE username=?', (str(data.get('username','')).strip().casefold(),)).fetchone()
+                    if not row or not access.password_matches(data.get('password',''),row[1]):
+                        return self.send_json({'error':'Nome de rede ou senha inválidos'},401)
+                    token = access.session(con,row[0])
+                return self.send_json({'ok':True},200,token)
+            if self.path == '/api/logout' and self.command == 'POST':
+                token = access.cookie_token(self.headers.get('Cookie'))
+                with connection() as con:
+                    con.execute('DELETE FROM sessions WHERE token_hash=?', (hashlib.sha256(token.encode()).hexdigest(),))
+                return self.send_json({'ok':True},200,'')
+            user = self.user()
+            if not user:
+                return self.send_json({'error':'Sessão ausente ou expirada'},401)
+            if self.path == '/api/password' and self.command == 'POST':
+                with connection() as con:
+                    stored=con.execute('SELECT password_hash FROM users WHERE id=?',(user['id'],)).fetchone()[0]
+                    if not access.password_matches(data.get('current_password',''),stored):
+                        return self.send_json({'error':'Senha atual inválida'},403)
+                    con.execute('UPDATE users SET password_hash=? WHERE id=?',(access.password_hash(data.get('new_password','')),user['id']))
+                    con.execute('DELETE FROM sessions WHERE user_id=?',(user['id'],))
+                    token=access.session(con,user['id'])
+                return self.send_json({'ok':True},200,token)
+            if user['role'] != 'admin' and not (self.path.startswith('/api/audits/') and self.command == 'PUT' or self.path == '/api/findings' and self.command == 'POST'):
+                raise PermissionError('Esta operação exige perfil Administrador')
+            if self.path == '/api/users' and self.command == 'POST':
+                with connection() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    new_user, temporary = access.create_user(con,data,catalog(con,'auditors'))
+                return self.send_json(dict(user=new_user,temporary_password=temporary),201)
+            if self.path.startswith('/api/requirements/') and self.command == 'PUT':
+                title = str(data.get('title','')).strip()
+                if not title:
+                    raise ValueError('Informe o título do requisito')
+                with connection() as con:
+                    rid = int(self.path.split('/')[-1])
+                    row = con.execute('SELECT payload FROM requirements WHERE id=?',(rid,)).fetchone()
+                    if not row:
+                        return self.send_json({'error':'Requisito não encontrado'},404)
+                    requirement = json.loads(row[0]);requirement['title']=title
+                    con.execute('UPDATE requirements SET payload=? WHERE id=?',(json.dumps(requirement),rid))
+                return self.send_json({'ok':True})
             if self.path == '/api/norms' and self.command == 'POST':
                 name = str(data.get('name', '')).strip()
                 if not name or len(name) > 150:
@@ -252,9 +342,9 @@ class Handler(SimpleHTTPRequestHandler):
                         raise ValueError('Informe nome e habilitações válidas')
                     data = dict(name=name, qualifications=qualifications)
                 else:
-                    if data.get('norm') not in norm_names() or not str(data.get('code', '')).strip():
-                        raise ValueError('Informe norma e código')
-                    data = dict(norm=data['norm'], code=data['code'].strip())
+                    if data.get('norm') not in norm_names() or not str(data.get('code', '')).strip() or not str(data.get('title', '')).strip():
+                        raise ValueError('Informe norma, código e título')
+                    data = dict(norm=data['norm'], code=data['code'].strip(), title=data['title'].strip())
                 with connection() as con:
                     con.execute('BEGIN IMMEDIATE')
                     entries = catalog(con, table)
@@ -276,7 +366,10 @@ class Handler(SimpleHTTPRequestHandler):
             if self.path == '/api/findings' and self.command == 'POST':
                 validate(data, True)
                 with connection() as con:
+                    con.execute('BEGIN IMMEDIATE')
                     audit = con.execute('SELECT payload FROM audits WHERE id=?', (int(data['audit_id']),)).fetchone()
+                    if audit and not access.can_manage(user,json.loads(audit[0])):
+                        raise PermissionError('Você não é o líder desta auditoria')
                     if not audit or not json.loads(audit[0]).get('plan', {}).get('confirmed'):
                         raise ValueError('Confirme o plano antes de registrar o relatório')
                     row = con.execute('INSERT INTO findings(audit_id,payload) VALUES (?,?)', (int(data['audit_id']), json.dumps(data))).lastrowid
@@ -296,9 +389,11 @@ class Handler(SimpleHTTPRequestHandler):
             if self.path.startswith('/api/audits/') and self.command == 'PUT':
                 validate(data)
                 with connection() as con:
+                    con.execute('BEGIN IMMEDIATE')
                     old = con.execute('SELECT payload FROM audits WHERE id=?', (int(self.path.split('/')[-1]),)).fetchone()
                     if old:
                         previous = json.loads(old[0])
+                        access.check_update(user,previous,data)
                         if data['audit_type'] != previous['audit_type'] or int(data['year']) != int(previous['year']):
                             raise ValueError('Tipo e ano não podem mudar após a geração do código')
                         data['code'] = previous['code']
@@ -316,6 +411,8 @@ class Handler(SimpleHTTPRequestHandler):
                         return self.send_json({'error': 'Auditoria não encontrada'}, 404)
                 return self.send_json({'ok': True})
             return self.send_json({'error': 'Não encontrado'}, 404)
+        except PermissionError as exc:
+            self.send_json({'error':str(exc)},403)
         except (ValueError, TypeError, sqlite3.IntegrityError) as exc:
             self.send_json({'error': str(exc)}, 400)
 

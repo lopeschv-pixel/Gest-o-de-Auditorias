@@ -1,6 +1,6 @@
 # Catálogo de códigos de requisitos
 
-Foram obtidos documentos de fontes oficiais em 21/10/2026 e extraídos somente os códigos numéricos, sem descrições ou reprodução do texto integral das normas.
+Foram obtidos documentos de fontes oficiais em 21/10/2026 e extraídos os códigos numéricos. Foram acrescentados títulos curtos em português, resumidos a partir dos tópicos dos documentos, sem descrições nem reprodução do texto integral dos requisitos.
 
 | Cadastro | Edição usada | Quantidade | Escopo |
 |---|---|---:|---|
@@ -25,6 +25,8 @@ O catálogo versionado é `static/requirements-catalog.json`, com códigos, edi�
 ## Pré-carga e atualização
 
 O servidor carrega o catálogo no SQLite ao inicializar a conexão. A demonstração incorpora o mesmo catálogo e importa os códigos no armazenamento local do navegador. Chave de duplicidade: norma e código, sem diferenciar maiúsculas/minúsculas. Registros existentes são preservados, inclusive identificadores e dados manuais. Repetir a inicialização não duplica códigos. O marcador de importação registra a versão de cada lote.
+
+Cada código possui título. Nos subitens ANSN sem cabeçalho próprio, o título usa o tópico superior e identifica o item; isso não é apresentado como título normativo literal. `scripts/requirement_titles_pt.json` registra os resumos usados na geração. A migração preenche títulos ausentes, preserva IDs e títulos manuais, e não duplica requisitos.
 
 A pré-carga foi executada no banco desta instância e verificada: 339 registros; segunda execução adicionou zero. Os testes também verificam a importação em banco vazio, preservação de um registro manual, filtros por norma e seleção em plano.
 

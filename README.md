@@ -16,7 +16,7 @@ Porta padrão 8000 (`PORT` para alterar). SQLite em `data/nuclaud.db` (`NUCLAUD_
 ## Fluxo e cadastros
 
 - Cadastre áreas no menu lateral. Os formulários de áreas e normas ficam na própria página, com confirmação/erro de salvamento.
-- Cadastre normas e requisitos. Cada requisito tem apenas norma e código, sem campo descrição. O catálogo inicial já contém 339 códigos de fontes oficiais; veja edições e abrangência em [REQUIREMENTS.md](REQUIREMENTS.md).
+- Cadastre normas e requisitos. Cada requisito tem norma, código e título, sem campo descrição. Os títulos pré-carregados são resumos em português dos tópicos das fontes; subitens ANSN sem título próprio herdam o tópico superior. Administradores podem editar o título sem alterar norma/código. O catálogo inicial já contém 339 códigos de fontes oficiais; veja edições e abrangência em [REQUIREMENTS.md](REQUIREMENTS.md).
 - Cadastre auditores com habilitações independentes por norma: Auditor líder, Auditor e Observador. Funções antigas foram preservadas na migração.
 - Na programação, selecione tipo, ano, uma ou mais áreas, uma ou mais normas, mês, líder, equipe, observadores e requisitos cadastrados. Não há título nem cadastro de áreas dentro da programação. Códigos automáticos: AUDI-I-001-2027 / AUDI-F-001-2027, com sequência por tipo e ano. Tipo e ano ficam preservados após gerar o código.
 - O líder precisa ter habilitação de líder em todas as normas; membros/observadores precisam da respectiva função em pelo menos uma norma. Uma pessoa não ocupa duas funções na mesma auditoria. Pelo menos um requisito por norma deve ser selecionado.
@@ -35,7 +35,7 @@ Planejamento de auditores mostra, por pessoa e ano do programa, as auditorias de
 
 ## Demonstração no GitHub Pages
 
-`python scripts/build_preview.py` gera `/tmp/nuclaud-preview/NUCLAUD-v10.html` a partir da mesma interface do servidor. Publicado como index.html na branch gh-pages. Ativação do Pages depende das configurações do repositório; publicação só é confirmada quando o provedor concluir a implantação.
+`python scripts/build_preview.py` gera `/tmp/nuclaud-preview/NUCLAUD-v11.html` a partir da mesma interface do servidor. Publicado como index.html na branch gh-pages. Ativação do Pages depende das configurações do repositório; publicação só é confirmada quando o provedor concluir a implantação.
 
 A demonstração usa armazenamento local do navegador, separado do SQLite. Mantém a mesma chave de dados das prévias anteriores. Se o navegador bloquear armazenamento, os registros ficam apenas na sessão e há um aviso. Não limpar/resetar o armazenamento para atualizar o aplicativo.
 
@@ -49,4 +49,28 @@ Planos antigos com uma data continuam visíveis, sem inventar horários; ao edit
 
 ## Limites
 
-Protótipo sem autenticação, perfis de acesso, anexos, revisão formal, exclusão ou edição de cadastros/constatações. Use dados fictícios na demonstração pública. Não há integração com o sistema de PACs. O catálogo é um índice de códigos: nas ISO, a abrangência é a do sumário da prévia oficial; não é o texto integral das normas. ASME III e Secretaria Naval não foram pré-carregadas por orientação do usuário.
+Protótipo com autenticação local e autorização no servidor; a demonstração estática Pages apenas simula perfis. Ainda não há integração com o diretório corporativo, anexos, revisão formal, exclusão, edição geral de usuários/auditores/áreas ou edição de constatações. Use dados fictícios na demonstração pública. Não há integração com o sistema de PACs. O catálogo é um índice de códigos: nas ISO, a abrangência é a do sumário da prévia oficial; não é o texto integral das normas. ASME III e Secretaria Naval não foram pré-carregadas por orientação do usuário.
+
+## Administração e acesso
+
+O menu Administração do sistema agrupa Cadastrar usuários, Cadastrar áreas, Cadastrar auditores e Cadastrar normas e requisitos. Usuários contêm nome de rede, nome completo, e-mail, perfil (Administrador ou Usuário) e vínculo ao auditor, obrigatório no perfil Usuário. Esse auditor precisa ter habilitação de líder.
+
+- Administrador: acesso a todos os módulos e cadastros.
+- Usuário: calendário somente com auditorias em que é líder, geração/edição/confirmação de plano, emissão de plano e elaboração do relatório/constatações dessas auditorias. Não programa auditorias, altera cadastros, transfere liderança ou acessa auditorias de outro líder.
+- O servidor aplica as permissões também nos endpoints; esconder menus não é o único controle.
+
+### Servidor
+
+No primeiro acesso, configure o administrador inicial pela interface. Não existe conta/senha padrão. Em localhost sem encaminhamento de proxy, a configuração inicial é permitida. Para instalação remota ou atrás de proxy, configure NUCLAUD_SETUP_TOKEN no servidor e informe essa chave no formulário inicial; o Render gera uma chave automaticamente pela configuração render.yaml. Não compartilhe a chave em chat nem a coloque no Git.
+
+O login usa nome de rede e senha **local**; não autentica no Active Directory. Cadastros feitos pelo administrador geram senha temporária exibida uma vez. O usuário pode alterar sua senha após entrar. Senhas são derivadas com PBKDF2-SHA256 e salt; a API não retorna hashes. Sessões em cookies HttpOnly/SameSite com validade de oito horas, encerradas ao sair; mudança de senha invalida as sessões anteriores. Use HTTPS para implantação remota. /healthz é público para monitoramento; /api/data exige login e filtra registros conforme o perfil.
+
+### Demonstração GitHub Pages
+
+Não existe backend no Pages. O administrador da demonstração é um perfil fictício local, sem senha, criado apenas nesse modo. O cabeçalho exibe “Prévia: perfis simulados”. Use Perfil de teste para alternar entre contas cadastradas e testar menus e fluxos. Esses controles no navegador não protegem dados contra quem alterar o armazenamento local; não são autenticação de produção e não sincronizam registros entre computadores.
+
+### Testes de acesso
+
+`python -m unittest discover -s tests -v` também testa login, dados inacessíveis sem sessão, permissões em chamadas diretas, programação imutável para usuários, auditorias de outros líderes, criação de usuários, senhas, logout e expiração.
+
+`node tests/test_access_policy.cjs` testa a política da demonstração. `python scripts/check_preview.py` testa Administração, cadastro de usuário, títulos e alternância de perfis. `python scripts/check_server_access.py` testa no navegador o servidor real: primeiro administrador, login, logout e plano/relatório com perfil Usuário.
