@@ -1,4 +1,6 @@
 import json
+import base64
+import struct
 import os
 import sqlite3
 import access
@@ -35,6 +37,7 @@ def connection():
     for table in ['macroprocesses','processes']:
         if 'deleted' not in {row[1] for row in con.execute(f'PRAGMA table_info({table})')}:
             con.execute(f'ALTER TABLE {table} ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0')
+    con.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT NOT NULL)')
     access.schema(con)
     con.execute('CREATE TABLE IF NOT EXISTS norms (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)')
     for name in NORMS:
@@ -56,6 +59,9 @@ def connection():
             audit['code'] = next_code(con, audit['audit_type'], audit['year'])
             audit.pop('title', None)
             con.execute('UPDATE audits SET payload=? WHERE id=?', (json.dumps(audit), aid))
+        if audit.get('status')=='Plano em rascunho' and audit.get('plan'):
+            audit['status']='Planejada';audit['plan']['confirmed']=True
+            con.execute('UPDATE audits SET payload=? WHERE id=?',(json.dumps(audit),aid))
         for name in audit.get('area_names', [audit['area']] if audit.get('area') else []):
             con.execute('INSERT OR IGNORE INTO areas(name) VALUES (?)', (name,))
     if PRELOAD_REQUIREMENTS:
@@ -313,7 +319,7 @@ def validate(data, finding=False):
         if data['status'] != 'Programada' and not plan:
             raise ValueError('Gere o plano primeiro')
         if (data.get('report') or data['status'] in ['Planejada', 'Em execução', 'Concluída']) and not (plan and plan.get('confirmed') is True):
-            raise ValueError('Confirme o plano antes de gerar o relatório')
+            raise ValueError('Salve o plano antes de gerar o relatório')
         if data['audit_type']=='I' and isinstance(data.get('report'),dict):
             data['report'].pop('conclusion',None)
             data['report'].pop('rqf',None)
@@ -372,11 +378,12 @@ class Handler(SimpleHTTPRequestHandler):
                 requirements = catalog(con, 'requirements')
                 norms = [n for (n,) in con.execute('SELECT name FROM norms ORDER BY id')]
                 processes = process_catalog(con)
+                settings={k:json.loads(v) for k,v in con.execute('SELECT key,value FROM settings')}
                 users = access.users(con) if user['role'] == 'admin' else []
             if user['role'] != 'admin':
                 audits = [a for a in audits if access.can_manage(user,a)]
                 findings = [f for f in findings if any(a['id']==f['audit_id'] for a in audits)]
-            return self.send_json(dict(**processes,current_user=user,users=users,audits=audits, findings=findings, areas=areas, auditors=auditors, requirements=requirements, norms=norms, requirement_sources=requirement_sources()))
+            return self.send_json(dict(**processes,settings=settings,current_user=user,users=users,audits=audits, findings=findings, areas=areas, auditors=auditors, requirements=requirements, norms=norms, requirement_sources=requirement_sources()))
         if self.path.startswith('/api/'):
             return self.send_json({'error': 'Não encontrado'}, 404)
         super().do_GET()
@@ -449,6 +456,25 @@ class Handler(SimpleHTTPRequestHandler):
                         return self.send_json({'error':'Auditoria não encontrada'},404)
                     con.execute('DELETE FROM findings WHERE audit_id=?',(aid,))
                     con.execute('DELETE FROM audits WHERE id=?',(aid,))
+                return self.send_json({'ok':True})
+            if self.path=='/api/settings' and self.command=='PUT':
+                logo=data.get('logo')
+                if not isinstance(logo,str) or len(logo)>700000:
+                    raise ValueError('Selecione um logotipo de até 700 KB')
+                if logo:
+                    if not logo.startswith('data:image/png;base64,'):
+                        raise ValueError('Formato de logotipo inválido')
+                    try:
+                        raw=base64.b64decode(logo.split(',',1)[1],validate=True)
+                    except Exception:
+                        raise ValueError('Imagem inválida')
+                    if len(raw)<33 or raw[:8]!=b'\x89PNG\r\n\x1a\n' or raw[12:16]!=b'IHDR':
+                        raise ValueError('Imagem PNG inválida')
+                    width,height=struct.unpack('>II',raw[16:24])
+                    if not 0<width<=1600 or not 0<height<=1600:
+                        raise ValueError('Dimensões de logotipo inválidas')
+                with connection() as con:
+                    con.execute('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',('logo',json.dumps(logo)))
                 return self.send_json({'ok':True})
             if self.path.startswith('/api/users/') and self.command in ['PUT','DELETE']:
                 uid=int(self.path.split('/')[-1])
@@ -625,7 +651,7 @@ class Handler(SimpleHTTPRequestHandler):
                     if audit and not access.can_manage(user,json.loads(audit[0])):
                         raise PermissionError('Você não é o líder desta auditoria')
                     if not audit or not json.loads(audit[0]).get('plan', {}).get('confirmed'):
-                        raise ValueError('Confirme o plano antes de registrar o relatório')
+                        raise ValueError('Salve o plano antes de registrar o relatório')
                     audit_data=json.loads(audit[0])
                     if audit_data.get('status')=='Concluída' and user['role']!='admin':
                         raise PermissionError('Somente administradores podem alterar um relatório concluído')

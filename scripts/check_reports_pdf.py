@@ -15,6 +15,7 @@ with sync_playwright() as p:
     page.route('http://127.0.0.1:8123/**',lambda r:r.fulfill(content_type='text/html',body=html))
     page.goto('http://127.0.0.1:8123/')
     fixture=page.evaluate('''async()=>{
+        const logoCanvas=document.createElement('canvas');logoCanvas.width=200;logoCanvas.height=60;const ctx=logoCanvas.getContext('2d');ctx.fillStyle='#174b80';ctx.fillRect(0,0,200,60);ctx.fillStyle='white';ctx.font='22px Arial';ctx.fillText('LOGO TESTE',20,38);await api('settings','PUT',{logo:logoCanvas.toDataURL('image/png')});
         await api('areas','POST',{name:'Qualidade'});
         const m=await api('macroprocesses','POST',{name:'Gestão'});
         const process=await api('processes','POST',{name:'Qualidade',macroprocess_id:m.id,norms:[...norms]});
@@ -155,6 +156,9 @@ for name in ['report-internal','report-supplier','plan']:
     assert len(signatures)==1 and signatures[0][0]==len(pages)-1
     assert float(signatures[0][1].get('yMin'))>750
     assert 'Data: ____' not in text
+    images=subprocess.check_output(['pdfimages','-list',str(pdf)],text=True).splitlines()[2:]
+    assert {int(line.split()[0]) for line in images if line.strip()}==set(range(1,len(pages)+1))
+    assert 'Rascunho' not in text
     assert 'Administração do sistema' not in text and 'Perfil de teste' not in text
     assert 'Ana Líder' in text and 'Bruno Auditor' in text
     if name=='report-internal':

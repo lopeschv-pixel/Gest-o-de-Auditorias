@@ -131,8 +131,7 @@ with sync_playwright() as p:
         page.locator('[name=period_date]').nth(1).fill('2027-03-11')
         page.locator('[name=period_start]').nth(1).fill('13:00')
         page.locator('[name=period_end]').nth(1).fill('17:00')
-        page.get_by_role('button',name='Salvar plano para conferência').click()
-        page.get_by_role('button',name='Confirmar plano',exact=True).click()
+        page.get_by_role('button',name='Salvar plano').click()
         page.get_by_role('button',name='Gerar PDF do plano').wait_for()
         assert '10/03/2027 08:00–12:00' in page.locator('#app').inner_text()
         assert '11/03/2027 13:00–17:00' in page.locator('#app').inner_text()
@@ -140,19 +139,8 @@ with sync_playwright() as p:
         page.get_by_role('button',name='Gerar PDF do plano',exact=True).click()
         assert all(value in page.locator('#print-document').inner_text() for value in ['11/03/2027','13:00','17:00'])
         assert 'gestor@example.com' in page.locator('#print-document').inner_text()
-        page.evaluate('HTMLAnchorElement.prototype.click=function(){window.draftEmail=this.href}')
-        page.get_by_role('button',name='Preparar e-mail',exact=True).click()
-        assert page.evaluate('window.draftEmail').startswith('blob:')
-        draft=page.evaluate("NuclaudEmail.message(data.audits.find(a=>a.id===selected.id),data.findings)")
-        assert 'To: gestor@example.com' in draft
-        assert 'Content-Type: application/pdf' in draft
-        assert 'Content-Disposition: attachment' in draft
-        from email import policy
-        from email.parser import Parser
-        parsed=Parser(policy=policy.default).parsestr(draft)
-        assert 'Maria Gestora' in parsed.get_body(preferencelist=('plain',)).get_content()
-        attached=list(parsed.iter_attachments())
-        assert len(attached)==1 and attached[0].get_payload(decode=True).startswith(b'%PDF-')
+        assert page.get_by_role('button',name='Preparar e-mail',exact=True).count()==0
+        assert 'Rascunho' not in page.locator('#app').inner_text()
         assert 'Engenharia · Qualidade' in page.locator('#app').inner_text()
         assert 'Bruno' in page.locator('#app').inner_text()
         assert 'Carla' in page.locator('#app').inner_text()

@@ -217,6 +217,26 @@ class AccessWorkflow(unittest.TestCase):
         self.call(self.admin,macro_path,{},'DELETE')
         self.assertEqual(self.call(self.admin,'data')['processes'],[])
 
+    def test_logo_settings_admin_only_and_shared_with_leaders(self):
+        import base64, struct, zlib
+        def chunk(kind,data):
+            return struct.pack('>I',len(data))+kind+data+struct.pack('>I',zlib.crc32(kind+data)&0xffffffff)
+        raw=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',20,10,8,2,0,0,0))+chunk(b'IDAT',zlib.compress((b'\0'+b'\x00\x40\x80'*20)*10))+chunk(b'IEND',b'')
+        logo='data:image/png;base64,'+base64.b64encode(raw).decode()
+        self.fails(401,self.client(),'settings',{'logo':logo},'PUT')
+        self.fails(403,self.regular,'settings',{'logo':logo},'PUT')
+        for invalid in ['https://example.com/logo.png','data:image/png;base64,garbage','x'*700001,None]:
+            self.fails(400,self.admin,'settings',{'logo':invalid},'PUT')
+        self.call(self.admin,'settings',{'logo':logo},'PUT')
+        self.assertEqual(self.call(self.regular,'data')['settings']['logo'],logo)
+        # The former draft phase is upgraded without changing the audit's identity.
+        with server.connection() as con:
+            legacy=dict(self.own,status='Plano em rascunho',plan=dict(lead='Ana',date='2027-03-10',confirmed=False))
+            con.execute('UPDATE audits SET payload=? WHERE id=?',(json.dumps(legacy),self.own['id']))
+        current=next(a for a in self.call(self.admin,'data')['audits'] if a['id']==self.own['id'])
+        self.assertEqual(current['status'],'Planejada');self.assertTrue(current['plan']['confirmed'])
+        self.assertEqual(current['code'],self.own['code'])
+
     def test_administrator_can_edit_auditors_preserving_links(self):
         aid=self.auditors[0]['id'];path='auditors/'+str(aid)
         body=dict(name='Ana corrigida',qualifications={'ISO 9001:2015':['leader','auditor','observer'],'ISO 45001':['auditor']})

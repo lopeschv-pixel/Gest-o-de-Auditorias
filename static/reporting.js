@@ -32,10 +32,10 @@
   function renderDocument(audit,findings,type,issuedOn){
     const p=audit.plan||audit,report=type==='report';
     const title=report?'Relatório de auditoria':'Plano de auditoria';
-    const state=report?(audit.status==='Concluída'?'Concluído':'Em elaboração'):(p.confirmed?'Confirmado':'Rascunho');
+    const state=report?(audit.status==='Concluída'?'Concluído':'Em elaboração'):'Emitido';
     const relevant=findings.filter(f=>+f.audit_id===+audit.id);
     const lines=String(p.requirements||'').split('\n').filter(Boolean);
-    const header=`<div class="doc-header"><div><div class="doc-brand">NUCLAUD <span>NUCLEP</span></div><h1>${title}</h1><p>${esc(audit.audit_type==='F'?'Auditoria de fornecedores':'Auditoria interna')}</p></div><div class="doc-reference"><strong>${esc(audit.code)}</strong><span>${state}</span><small>Emissão: ${esc(issuedOn)}</small></div></div>`;
+    const header=`<div class="doc-header"><div><div class="doc-brand">${globalThis.NUCLAUD_LOGO?`<img class="doc-logo" src="${esc(globalThis.NUCLAUD_LOGO)}" alt="Logotipo da NUCLEP">`:""}NUCLAUD <span>NUCLEP</span></div><h1>${title}</h1><p>${esc(audit.audit_type==='F'?'Auditoria de fornecedores':'Auditoria interna')}</p></div><div class="doc-reference"><strong>${esc(audit.code)}</strong><span>${state}</span><small>Emissão: ${esc(issuedOn)}</small></div></div>`;
     const identification=section('1. Identificação da auditoria',info([...(audit.audit_type==='F'?[['Nome do fornecedor',audit.supplier_name],['CNPJ do fornecedor',audit.supplier_cnpj],['Endereço do fornecedor',audit.supplier_address],['Escopo de fornecimento',audit.supply_scope]]:[['Áreas',audit.area],['Macroprocessos',p.macroprocesses??audit.macroprocesses],['Processos',p.processes??audit.processes]]),['Normas e referenciais',(p.norms||[]).join(' · ')],['Local',p.location],['Nome do gestor',p.manager_name],['E-mail do gestor',p.manager_email||p.email]]));
     const team=section('2. Equipe auditora e participantes',info([['Auditor líder',p.lead||audit.lead],['Auditores',(p.team??audit.team)||'Não há outros auditores'],...(p.observers?[['Observadores',p.observers]]:[]),...(report&&audit.report?.participants?[['Participantes',audit.report.participants]]:[])]));
     const dates=section('3. Dias e horários',`<table class="doc-table"><thead><tr><th>Data</th><th>Início</th><th>Fim</th></tr></thead><tbody>${periodRows(p)}</tbody></table>`);

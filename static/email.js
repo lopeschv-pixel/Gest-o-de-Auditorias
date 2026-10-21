@@ -1,10 +1,10 @@
-/* jsPDF is bundled locally; email drafts contain the PDF, never an external print URL. */
+/* Local PDF generation with a shared logo and signature on the final page. */
 (function(root){
  function pdf(a,findings,type='plan'){
   const doc=new root.jspdf.jsPDF({unit:'mm',format:'a4'}),title=type==='report'?'Relatório de auditoria':'Plano de auditoria';let y=38;
   const issued=new Date().toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'});
   const container=document.createElement('div');container.innerHTML=NuclaudReporting.renderDocument(a,findings,type,issued);
-  function header(){doc.setTextColor(33,91,66);doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('NUCLAUD · NUCLEP',16,17);doc.setFontSize(10);doc.text(a.code,194,17,{align:'right'});doc.setFontSize(14);doc.text(title,16,26);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text('Emissão: '+issued,194,26,{align:'right'});doc.setDrawColor(33,91,66);doc.line(16,30,194,30);y=38;}
+  function header(){const logo=root.NUCLAUD_LOGO;if(logo){const props=doc.getImageProperties(logo),scale=Math.min(42/props.width,18/props.height);doc.addImage(logo,'PNG',16,9,props.width*scale,props.height*scale);}doc.setTextColor(33,91,66);doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('NUCLAUD · NUCLEP',root.NUCLAUD_LOGO?64:16,17);doc.setFontSize(10);doc.text(a.code,194,17,{align:'right'});doc.setFontSize(14);doc.text(title,16,root.NUCLAUD_LOGO?34:26);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text('Emissão: '+issued,194,root.NUCLAUD_LOGO?34:26,{align:'right'});doc.setDrawColor(33,91,66);const bottom=root.NUCLAUD_LOGO?38:30;doc.line(16,bottom,194,bottom);y=bottom+8;}
   function room(height){if(y+height>250){doc.addPage();header();}}
   function line(value,bold=false){doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(bold?10:9.5);const lines=doc.splitTextToSize(String(value||'Não informado'),178);for(const part of lines){room(5);doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(bold?10:9.5);doc.setTextColor(30,51,40);doc.text(part,16,y);y+=4.8;}y+=2;}
   function heading(value){room(16);doc.setFillColor(237,243,239);doc.rect(16,y-4,178,8,'F');doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(33,91,66);doc.text(value,19,y+1);y+=10;}
@@ -27,8 +27,5 @@
   return doc.output('datauristring').split(',')[1];
  }
  function download(a,findings,type){const bytes=Uint8Array.from(atob(pdf(a,findings,type)),c=>c.charCodeAt(0));const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const link=document.createElement('a');link.href=url;link.download=(type==='report'?'Relatorio-':'Plano-')+a.code+'.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
- const b64=text=>btoa(String.fromCharCode(...new TextEncoder().encode(text)));
- function message(a,findings){const email=(a.plan.manager_email||a.plan.email||'').trim();if(!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(email))throw Error('Informe um e-mail válido do gestor no plano.');const boundary='NUCLAUD_'+Date.now();const encoded=pdf(a,findings).match(/.{1,76}/g).join('\r\n');return ['X-Unsent: 1','To: '+email,'Subject: =?UTF-8?B?'+b64('Plano de auditoria — '+a.code)+'?=','MIME-Version: 1.0','Content-Type: multipart/mixed; boundary="'+boundary+'"','','--'+boundary,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',b64(`Prezado(a) ${a.plan.manager_name||'gestor(a)'},\n\nSegue em anexo o plano de auditoria ${a.code} para conhecimento.\n\nAtenciosamente,\n${a.plan.lead}`),'--'+boundary,'Content-Type: application/pdf; name="Plano-'+a.code+'.pdf"','Content-Disposition: attachment; filename="Plano-'+a.code+'.pdf"','Content-Transfer-Encoding: base64','',encoded,'--'+boundary+'--',''].join('\r\n');}
- function prepare(a,findings){const blob=new Blob([message(a,findings)],{type:'message/rfc822'});const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='Plano-'+a.code+'.eml';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
- root.NuclaudEmail={pdf,download,message,prepare};
+ root.NuclaudEmail={pdf,download};
 })(globalThis);

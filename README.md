@@ -1,6 +1,6 @@
 # NUCLAUD — NUCLEP
 
-Gestão de auditorias: programação anual → calendário → plano com dias e horários → confirmação → emissão → relatório com constatações e referência ao PAC externo.
+Gestão de auditorias: programação anual → calendário → plano com dias e horários → emissão → relatório com constatações e referência ao PAC externo.
 
 ## Executar
 
@@ -21,7 +21,7 @@ Porta padrão 8000 (`PORT` para alterar). SQLite em `data/nuclaud.db` (`NUCLAUD_
 - Na programação, selecione tipo, ano, uma ou mais áreas, uma ou mais normas, mês, líder, equipe, observadores e requisitos cadastrados. Não há título nem cadastro de áreas dentro da programação. Códigos automáticos: AUDI-I-001-2027 / AUDI-F-001-2027, com sequência por tipo e ano. Tipo e ano ficam preservados após gerar o código.
 - O líder precisa ter habilitação de líder em todas as normas; membros/observadores precisam da respectiva função em pelo menos uma norma. Uma pessoa não ocupa duas funções na mesma auditoria. Pelo menos um requisito por norma deve ser selecionado.
 - Pelo calendário, gere o plano. Ele aproveita a programação, permite alterar a equipe e os requisitos, adicionar vários dias/períodos com horário de início/fim por dia, objetivo/escopo, local e e-mail do gestor. É possível ter períodos separados no mesmo dia; sobreposição e fim anterior ao início são bloqueados.
-- Confirmar o plano habilita PDF e preparação de e-mail. O PDF é gerado e baixado diretamente. Preparar e-mail baixa um rascunho .eml com o plano PDF anexado, para abrir em um aplicativo compatível e enviar manualmente.
+- Salvar o plano disponibiliza imediatamente o PDF e a elaboração do relatório, sem etapa de rascunho ou confirmação.
 - Gerar relatório fica dentro da auditoria, acessada pelo calendário. Não há menu lateral de relatório. Registre participantes e constatações classificadas como conformidade, não conformidade, observação ou oportunidade de melhoria. Conclusão é exclusiva de auditorias de fornecedores. Os nomes da equipe vêm do plano de auditoria. Não conformidades exigem o número do PAC; tratamento em sistema externo.
 
 ## Planejamento e ranqueamento
@@ -45,7 +45,7 @@ Planos antigos com uma data continuam visíveis, sem inventar horários; ao edit
 
 - `python -m unittest discover -s tests -v`: API, banco temporário, requisitos sem descrição e períodos múltiplos/invalidade.
 - `node tests/test_planning.cjs`: pontuação, troca da equipe no plano, filtros anuais, zeros, ordenação, compatibilidade e períodos sobrepostos.
-- `python scripts/build_preview.py && python scripts/check_preview.py`: teste no Chromium/Playwright dos cadastros, seleção múltipla, plano com dois dias, PDF/e-mail, planejamento, ranking e persistência, inclusive armazenamento bloqueado. Requer Playwright e `/usr/bin/chromium`.
+- `python scripts/build_preview.py && python scripts/check_preview.py`: teste no Chromium/Playwright dos cadastros, seleção múltipla, plano com dois dias, PDF, planejamento, ranking e persistência, inclusive armazenamento bloqueado. Requer Playwright e `/usr/bin/chromium`.
 
 ## Limites
 
@@ -56,7 +56,7 @@ Protótipo com autenticação local e autorização no servidor; a demonstraçã
 O menu Administração do sistema agrupa Cadastrar usuários, Cadastrar áreas, Cadastrar auditores e Cadastrar normas e requisitos. Usuários contêm nome de rede, nome completo, e-mail, perfil (Administrador ou Usuário) e vínculo ao auditor, obrigatório no perfil Usuário. Esse auditor precisa ter habilitação de líder.
 
 - Administrador: acesso a todos os módulos e cadastros.
-- Usuário: calendário somente com auditorias em que é líder, geração/edição dos dias e horários e confirmação do plano, emissão de plano e elaboração do relatório/constatações dessas auditorias. Não programa auditorias, altera cadastros, transfere liderança ou acessa auditorias de outro líder.
+- Usuário: calendário somente com auditorias em que é líder, geração/edição dos dias e horários do plano, emissão de plano e elaboração do relatório/constatações dessas auditorias. Não programa auditorias, altera cadastros, transfere liderança ou acessa auditorias de outro líder.
 - O servidor aplica as permissões também nos endpoints; esconder menus não é o único controle.
 
 ### Servidor
@@ -83,7 +83,6 @@ A programação e o plano oferecem requisitos com até duas subdivisões abaixo 
 
 Conformidades registram requisitos e evidência encontrada, sem descrição adicional. O botão Concluir relatório exige que todos os IDs de requisitos do plano tenham uma conformidade ou não conformidade; observações e oportunidades não substituem essa classificação. O servidor aplica a mesma regra. O PDF inclui uma linha com o texto Assinatura do auditor líder no final da última página, sem campo de data.
 
-Preparar e-mail baixa um rascunho `.eml` com destinatário, mensagem e plano PDF anexado, gerado localmente com jsPDF 4.2.1 (MIT, licença preservada em static/vendor). Abra o arquivo em um aplicativo de e-mail compatível para revisar e enviar; a abertura automática de rascunhos depende do aplicativo/sistema operacional. Não envia e-mails pelo servidor nem usa mailto para anexos.
 
 Relatórios em elaboração oferecem Salvar relatório, Editar constatação e Excluir constatação em cada registro, inclusive dentro do editor do relatório. Alterações em constatações preservam seu ID, verificam a liderança da auditoria e recalculam a cobertura dos requisitos. A conclusão apresenta os códigos/títulos pendentes antes de verificar os demais campos; não exige salvar um rascunho vazio previamente. Relatórios concluídos ficam bloqueados para usuários comuns na interface e na API. Administradores podem corrigir ou excluir constatações; a alteração reabre o relatório para uma nova conclusão com validação de todos os requisitos. A classificação acompanha o número da constatação; botões de edição não aparecem nos documentos impressos.
 
@@ -93,7 +92,7 @@ O calendário oferece filtro por norma (incluindo Todas as normas), combinado co
 
 Editar programação está disponível na lista anual, no cartão do calendário e na auditoria para administradores, preservando código, tipo e ano. Cada auditor cadastrado oferece Editar auditor para corrigir nome e habilitações; o ID permanece, preservando vínculos de usuários e auditorias. Documentos existentes mantêm seus dados históricos; os cadastros atualizados alimentam novas seleções.
 
-No plano, administradores podem editar todos os campos. O líder tem um formulário apenas de dias/horários, com os demais dados visíveis para consulta. A API também rejeita alterações em normas, requisitos, equipe, local e gestor feitas por usuários comuns. O primeiro plano do líder herda a programação; novas datas exigem confirmar novamente. Planos de relatórios iniciados continuam preservados para rastreabilidade.
+No plano, administradores podem editar todos os campos. O líder tem um formulário apenas de dias/horários, com os demais dados visíveis para consulta. A API também rejeita alterações em normas, requisitos, equipe, local e gestor feitas por usuários comuns. O primeiro plano do líder herda a programação; novas datas são aplicadas ao salvar o plano. Planos de relatórios iniciados continuam preservados para rastreabilidade.
 
 Administradores podem usar Excluir programação na lista anual, no calendário ou na auditoria. A confirmação informa que plano, relatório e constatações vinculadas também serão excluídos. A exclusão é atômica no servidor, preserva os cadastros. A próxima numeração considera o maior código ainda existente do mesmo tipo e ano; sem registros desse tipo/ano, reinicia em 001. Usuários comuns não veem a opção e recebem bloqueio na API.
 
@@ -105,7 +104,7 @@ Na programação de fornecedores, os primeiros dados após o tipo são nome do f
 
 Cada processo tem uma ou mais normas aplicáveis. Abaixo de cada norma marcada, selecione seus requisitos obrigatórios. A programação filtra os processos pelas normas selecionadas e inclui automaticamente os requisitos obrigatórios correspondentes, que não podem ser desmarcados; a API exige a mesma cobertura na programação e no plano. Processos antigos sem normas permanecem compatíveis até que o cadastro seja atualizado. Editar processo mantém o ID e registra o histórico de criação/alterações com responsável e horário.
 
-`python scripts/check_process_requirements.py` testa seleção por norma, requisitos obrigatórios, edição e inclusão automática na programação. `python scripts/check_reports_pdf.py` testa os PDFs baixados, inclusive relatórios longos, conteúdo completo e assinatura única próxima ao rodapé da última página, sem data. O PDF anexado ao e-mail usa o mesmo gerador.
+`python scripts/check_process_requirements.py` testa seleção por norma, requisitos obrigatórios, edição e inclusão automática na programação. `python scripts/check_reports_pdf.py` testa os PDFs baixados, inclusive relatórios longos, conteúdo completo e assinatura única próxima ao rodapé da última página, sem data.
 
 Os requisitos aplicáveis cadastrados em cada processo entram automaticamente ao selecioná-lo na programação. Eles formam a seleção mínima; a lista continua disponível para acrescentar outros requisitos das normas escolhidas, que também seguem para o plano e precisam ser classificados no relatório.
 
@@ -114,3 +113,7 @@ A conclusão de fornecedores tem seleção única: Não qualificado, Qualificado
 Administradores têm Editar e Excluir em todos os registros de macroprocessos, processos e usuários. A exclusão de macroprocesso retira também seus processos das novas seleções; auditorias e documentos existentes preservam os dados já registrados. No servidor, os catálogos são arquivados e podem ser recadastrados sem perder o histórico. A edição de usuários preserva a senha; exclusão revoga suas sessões. O último administrador não pode ser excluído ou rebaixado, para manter acesso à administração.
 
 Os requisitos no cadastro do processo ficam alinhados à esquerda e incluem códigos como 4.4 e 4.4.1, em ordem numérica, excluindo itens mais profundos como 4.4.1.1. `python scripts/check_admin_catalogs.py` verifica alinhamento no computador/celular, níveis, ordenação e os três conjuntos de botões administrativos.
+
+Em Administração → Identidade visual, selecione o arquivo oficial do logotipo (PNG, JPEG ou WebP, até 5 MB), confira a prévia e clique em Salvar logotipo. A imagem é normalizada para PNG, limitada em dimensões/tamanho, e incorporada em todas as páginas dos PDFs. Na prévia, fica no armazenamento deste navegador; no servidor, no SQLite, com alteração exclusiva de administradores e leitura disponível para os PDFs dos líderes. O logotipo é fornecido pelo administrador; não há imagem oficial embutida.
+
+O plano é emitido ao salvar. Planos antigos na fase de rascunho são atualizados preservando o código e os dados. Preparar e-mail foi removido. Auditorias concluídas continuam cinzas e mostram Realizada no calendário. `python scripts/check_logo_plan.py` testa upload, persistência, emissão direta e os novos rótulos; o teste de PDFs também verifica o logotipo em todas as páginas.
