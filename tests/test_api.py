@@ -22,6 +22,9 @@ class Workflow(unittest.TestCase):
                 con.execute('INSERT INTO auditors(payload) VALUES (?)',(json.dumps(dict(name=name,qualifications={n:'leader' for n in server.NORMS})),))
             for norm in ['ISO 9001:2015','ANSN 1.16','ASME III']:
                 con.execute('INSERT INTO requirements(payload) VALUES (?)',(json.dumps(dict(norm=norm,code='8.4',description='Requisito cadastrado')),))
+        with server.connection() as con:
+            con.execute("INSERT INTO macroprocesses(name) VALUES ('Gestão')")
+            con.execute("INSERT INTO processes(macroprocess_id,name) VALUES (1,'Qualidade')")
         cls.http = ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
         threading.Thread(target=cls.http.serve_forever, daemon=True).start()
         cls.url = 'http://127.0.0.1:' + str(cls.http.server_port)
@@ -46,7 +49,7 @@ class Workflow(unittest.TestCase):
 
     def test_full_workflow_and_pac_validation(self):
         self.request('/api/areas', {'name':'Compras'})
-        audit = dict(audit_type='I', year=2027, month=3, area='Compras', lead='Auditor líder', norms=['ISO 9001:2015'], requirements='ISO 9001:2015 — 8.4', lead_id=1, team_ids=[], requirement_ids=[1], status='Programada')
+        audit = dict(audit_type='I',macroprocess_ids=[1],process_ids=[1], year=2027, month=3, area='Compras', lead='Auditor líder', norms=['ISO 9001:2015'], requirements='ISO 9001:2015 — 8.4', lead_id=1, team_ids=[], requirement_ids=[1], status='Programada')
         aid = self.request('/api/audits',audit)['id']
         with self.assertRaises(urllib.error.HTTPError):
             self.request('/api/audits/'+str(aid),dict(audit, report={'conclusion':'Prematuro'}),'PUT')
@@ -54,7 +57,7 @@ class Workflow(unittest.TestCase):
         audit['status'] = 'Planejada'
         self.request('/api/audits/'+str(aid),audit,'PUT')
         self.assertEqual(self.request('/api/data')['audits'][0]['code'], 'AUDI-I-001-2027')
-        finding = dict(audit_id=aid, kind='Não conformidade', area='Compras', description='Registro ausente', requirements='ISO 9001:2015 — 8.4', evidence='Amostra do processo de compra', pac='')
+        finding = dict(requirement_ids=[2],audit_id=aid, kind='Não conformidade', area='Compras', description='Registro ausente', requirements='ISO 9001:2015 — 8.4', evidence='Amostra do processo de compra', pac='')
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             self.request('/api/findings',finding)
         self.assertEqual(ctx.exception.code,400)
@@ -68,10 +71,11 @@ class Workflow(unittest.TestCase):
         self.assertEqual(state['audits'][0]['plan']['lead'],'Outro auditor')
         with self.assertRaises(urllib.error.HTTPError):
             self.request('/api/audits/'+str(aid), dict(audit,plan=dict(audit['plan'],confirmed=False)), 'PUT')
-        self.assertEqual(state['findings'][0]['pac'],'PAC-001')
-        self.assertEqual(state['findings'][0]['audit_id'],aid)
+        own_finding=next(f for f in state['findings'] if f['audit_id']==aid)
+        self.assertEqual(own_finding['pac'],'PAC-001')
+        self.assertEqual(own_finding['audit_id'],aid)
         with server.connection() as con:
-            self.assertEqual(con.execute('SELECT count(*) FROM findings').fetchone()[0],1)
+            self.assertEqual(con.execute('SELECT count(*) FROM findings WHERE audit_id=?',(aid,)).fetchone()[0],1)
 
     def test_missing_audit_rejected(self):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
@@ -80,7 +84,7 @@ class Workflow(unittest.TestCase):
 
     def test_sequences_and_registered_areas(self):
         self.request('/api/areas', {'name':'Qualidade'})
-        audit = dict(audit_type='I',year=2030,month=5,area='Qualidade',lead='Auditor',norms=['ASME III'],requirements='Requisito',lead_id=1,team_ids=[],requirement_ids=[3],status='Programada')
+        audit = dict(audit_type='I',macroprocess_ids=[1],process_ids=[1],year=2030,month=5,area='Qualidade',lead='Auditor',norms=['ASME III'],requirements='Requisito',lead_id=1,team_ids=[],requirement_ids=[3],status='Programada')
         first = self.request('/api/audits', audit)
         second = self.request('/api/audits', audit)
         supplier = self.request('/api/audits', dict(audit,audit_type='F'))
@@ -120,7 +124,7 @@ class Workflow(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):
             self.request('/api/requirements',dict(norm='ISO 14001',code='6.1',title='Aspectos ambientais',description='Duplicado'))
         self.request('/api/areas',{'name':'SMS'})
-        audit=dict(audit_type='I',year=2032,month=6,area='SMS',lead='Auditor líder',requirements='Seleção',norms=['ISO 9001:2015'],lead_id=1,team_ids=[],requirement_ids=[1],status='Programada')
+        audit=dict(audit_type='I',macroprocess_ids=[1],process_ids=[1],year=2032,month=6,area='SMS',lead='Auditor líder',requirements='Seleção',norms=['ISO 9001:2015'],lead_id=1,team_ids=[],requirement_ids=[1],status='Programada')
         for payload in [dict(audit,lead_id=member['id']),dict(audit,requirement_ids=[req['id']]),dict(audit,norms=['ISO 9001:2015','ASME III']),dict(audit,team_ids=[1])]:
             with self.assertRaises(urllib.error.HTTPError):
                 self.request('/api/audits',payload)
@@ -139,7 +143,7 @@ class Workflow(unittest.TestCase):
         req=self.request('/api/requirements',dict(norm='Secretaria Naval',code='N1',title='Requisito naval',description='Requisito naval'))
         self.request('/api/requirements',dict(norm='Norma de teste',code='T1',title='Requisito adicional',description='Requisito adicional'))
         self.request('/api/areas',{'name':'Naval'})
-        audit=dict(audit_type='I',year=2035,month=2,area='Naval',lead='Líder naval',requirements='N1',norms=['Secretaria Naval'],lead_id=leader['id'],team_ids=[auditor['id']],requirement_ids=[req['id']],status='Programada')
+        audit=dict(audit_type='I',macroprocess_ids=[1],process_ids=[1],year=2035,month=2,area='Naval',lead='Líder naval',requirements='N1',norms=['Secretaria Naval'],lead_id=leader['id'],team_ids=[auditor['id']],requirement_ids=[req['id']],status='Programada')
         self.request('/api/audits',audit)
         with self.assertRaises(urllib.error.HTTPError):
             self.request('/api/audits',dict(audit,lead_id=auditor['id'],team_ids=[leader['id']]))
@@ -160,7 +164,7 @@ class Workflow(unittest.TestCase):
         self.assertNotIn('description',req)
         self.assertEqual(req['title'],'Controle operacional')
         self.request('/api/areas',{'name':'Operação'})
-        audit=dict(audit_type='I',year=2037,month=3,area='Operação',lead='Auditor líder',requirements='8.1',norms=['ISO 45001'],lead_id=1,team_ids=[],requirement_ids=[req['id']],status='Programada')
+        audit=dict(audit_type='I',macroprocess_ids=[1],process_ids=[1],year=2037,month=3,area='Operação',lead='Auditor líder',requirements='8.1',norms=['ISO 45001'],lead_id=1,team_ids=[],requirement_ids=[req['id']],status='Programada')
         aid=self.request('/api/audits',audit)['id']
         periods=[dict(date='2037-03-11',start='13:00',end='17:00'),dict(date='2037-03-10',start='08:00',end='12:00')]
         plan=dict(lead='Auditor líder',norms=['ISO 45001'],requirements='8.1',lead_id=1,team_ids=[],requirement_ids=[req['id']],periods=periods,manager_email='gestor@example.com',location='Sala de reunião',confirmed=False)
@@ -203,6 +207,51 @@ class Workflow(unittest.TestCase):
             self.request('/api/requirements/1',{'title':''},'PUT')
         with self.assertRaises(urllib.error.HTTPError):
             self.request('/api/requirements',{'norm':'ISO 9001:2015','code':'CUSTOM-MISSING-TITLE'})
+
+    def test_findings_classification_fields_and_supplier_only_conclusion(self):
+        self.request('/api/areas',{'name':'Relatórios'})
+        def make(kind):
+            plan=dict(date='2038-03-10',lead='Auditor líder',lead_id=1,team_ids=[2],norms=['ISO 9001:2015'],requirements='8.4',requirement_ids=[1],confirmed=True)
+            audit=dict(audit_type=kind,year=2038,month=3,area='Relatórios',macroprocess_ids=[1],process_ids=[1],lead='Auditor líder',lead_id=1,team_ids=[2],norms=['ISO 9001:2015'],requirements='8.4',requirement_ids=[1],plan=plan,status='Planejada')
+            aid=self.request('/api/audits',audit)['id']
+            return next(a for a in self.request('/api/data')['audits'] if a['id']==aid)
+        audit=make('I')
+        conform=dict(audit_id=audit['id'],kind='Conformidade',description='Critério atendido',requirement_ids=[1],evidence='Registro analisado')
+        self.request('/api/findings',conform)
+        for invalid in [dict(conform,evidence=''),dict(conform,requirement_ids=[99999]),dict(conform,kind='Constatação'),dict(conform,kind='Não conformidade',pac='')]:
+            with self.assertRaises(urllib.error.HTTPError):self.request('/api/findings',invalid)
+        self.request('/api/findings',dict(conform,kind='Não conformidade',pac='PAC-TEST'))
+        for kind in ['Observação','Oportunidade de melhoria']:
+            self.request('/api/findings',dict(audit_id=audit['id'],kind=kind,description='Anotação registrada',evidence='OCULTO',pac='OCULTO',requirements='OCULTO'))
+        findings=[f for f in self.request('/api/data')['findings'] if f['audit_id']==audit['id']]
+        self.assertEqual(len(findings),4)
+        self.assertTrue(all(f['auditor_name']=='Auditor líder' for f in findings))
+        for finding in findings[2:]:
+            for key in ['evidence','pac','requirements','requirement_ids']:self.assertNotIn(key,finding)
+        self.request('/api/audits/'+str(audit['id']),dict(audit,status='Concluída',report={'participants':'Participantes','conclusion':'Remover campo interno'}),'PUT')
+        saved=next(a for a in self.request('/api/data')['audits'] if a['id']==audit['id'])
+        self.assertNotIn('conclusion',saved['report'])
+        supplier=make('F')
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request('/api/audits/'+str(supplier['id']),dict(supplier,status='Concluída',report={'participants':'Equipe'}),'PUT')
+        self.request('/api/audits/'+str(supplier['id']),dict(supplier,status='Concluída',report={'participants':'Equipe','conclusion':'Fornecedor avaliado'}),'PUT')
+
+    def test_macroprocess_and_process_registration_and_required_links(self):
+        first=self.request('/api/macroprocesses',{'name':'Operações'})
+        second=self.request('/api/macroprocesses',{'name':'Suporte'})
+        one=self.request('/api/processes',{'name':'Inspeção','macroprocess_id':first['id']})
+        two=self.request('/api/processes',{'name':'Inspeção','macroprocess_id':second['id']})
+        for path,body in [('macroprocesses',{'name':' operações '}),('processes',{'name':'inspeção','macroprocess_id':first['id']}),('processes',{'name':'Inválido','macroprocess_id':99999})]:
+            with self.assertRaises(urllib.error.HTTPError):self.request('/api/'+path,body)
+        self.request('/api/areas',{'name':'Escopos'})
+        audit=dict(audit_type='I',year=2040,month=5,area='Escopos',lead='Auditor líder',lead_id=1,team_ids=[],norms=['ISO 9001:2015'],requirements='8.4',requirement_ids=[1],status='Programada',macroprocess_ids=[first['id'],second['id']],process_ids=[one['id'],two['id']])
+        aid=self.request('/api/audits',audit)['id']
+        state=self.request('/api/data');saved=next(a for a in state['audits'] if a['id']==aid)
+        self.assertEqual(saved['macroprocesses'],'Operações · Suporte')
+        self.assertIn('Operações › Inspeção',saved['processes']);self.assertIn('Suporte › Inspeção',saved['processes'])
+        self.assertTrue(any(p['id']==one['id'] and p['macroprocess_id']==first['id'] for p in state['processes']))
+        for invalid in [dict(audit,macroprocess_ids=[]),dict(audit,process_ids=[]),dict(audit,process_ids=[one['id']]),dict(audit,macroprocess_ids=[first['id']],process_ids=[two['id']])]:
+            with self.assertRaises(urllib.error.HTTPError):self.request('/api/audits',invalid)
 
     def test_ui_is_served(self):
         with urllib.request.urlopen(self.url+'/') as r:

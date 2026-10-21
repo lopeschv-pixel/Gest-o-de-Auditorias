@@ -22,7 +22,7 @@ Porta padrão 8000 (`PORT` para alterar). SQLite em `data/nuclaud.db` (`NUCLAUD_
 - O líder precisa ter habilitação de líder em todas as normas; membros/observadores precisam da respectiva função em pelo menos uma norma. Uma pessoa não ocupa duas funções na mesma auditoria. Pelo menos um requisito por norma deve ser selecionado.
 - Pelo calendário, gere o plano. Ele aproveita a programação, permite alterar a equipe e os requisitos, adicionar vários dias/períodos com horário de início/fim por dia, objetivo/escopo, local e e-mail do gestor. É possível ter períodos separados no mesmo dia; sobreposição e fim anterior ao início são bloqueados.
 - Confirmar o plano habilita PDF e preparação de e-mail. O PDF usa a impressão do navegador. O e-mail abre no aplicativo configurado, já preenchido; envio é manual, assim como anexar PDF.
-- Gerar relatório fica dentro da auditoria, acessada pelo calendário. Não há menu lateral de relatório. Registre participantes, conclusão, constatações e evidências. Não conformidades exigem o número do PAC; tratamento em sistema externo.
+- Gerar relatório fica dentro da auditoria, acessada pelo calendário. Não há menu lateral de relatório. Registre participantes e constatações classificadas como conformidade, não conformidade, observação ou oportunidade de melhoria. Conclusão é exclusiva de auditorias de fornecedores. Os nomes da equipe vêm do plano de auditoria. Não conformidades exigem o número do PAC; tratamento em sistema externo.
 
 ## Planejamento e ranqueamento
 
@@ -35,7 +35,7 @@ Planejamento de auditores mostra, por pessoa e ano do programa, as auditorias de
 
 ## Demonstração no GitHub Pages
 
-`python scripts/build_preview.py` gera `/tmp/nuclaud-preview/NUCLAUD-v11.html` a partir da mesma interface do servidor. Publicado como index.html na branch gh-pages. Ativação do Pages depende das configurações do repositório; publicação só é confirmada quando o provedor concluir a implantação.
+`python scripts/build_preview.py` gera `/tmp/nuclaud-preview/NUCLAUD-v12.html` a partir da mesma interface do servidor. Publicado como index.html na branch gh-pages. Ativação do Pages depende das configurações do repositório; publicação só é confirmada quando o provedor concluir a implantação.
 
 A demonstração usa armazenamento local do navegador, separado do SQLite. Mantém a mesma chave de dados das prévias anteriores. Se o navegador bloquear armazenamento, os registros ficam apenas na sessão e há um aviso. Não limpar/resetar o armazenamento para atualizar o aplicativo.
 
@@ -74,3 +74,7 @@ Não existe backend no Pages. O administrador da demonstração é um perfil fic
 `python -m unittest discover -s tests -v` também testa login, dados inacessíveis sem sessão, permissões em chamadas diretas, programação imutável para usuários, auditorias de outros líderes, criação de usuários, senhas, logout e expiração.
 
 `node tests/test_access_policy.cjs` testa a política da demonstração. `python scripts/check_preview.py` testa Administração, cadastro de usuário, títulos e alternância de perfis. `python scripts/check_server_access.py` testa no navegador o servidor real: primeiro administrador, login, logout e plano/relatório com perfil Usuário.
+
+Na Administração, cadastre macroprocessos e seus processos vinculados. A programação exige selecionar um ou mais macroprocessos e pelo menos um processo de cada macroprocesso escolhido. O plano e o relatório apresentam essas informações. Registros antigos são preservados; ao editar a programação, complete os novos campos.
+
+`node tests/test_reporting.cjs` valida as classificações e a composição dos documentos. `python scripts/check_reports_pdf.py` verifica os formulários no navegador e gera PDFs A4 de plano, relatório interno longo e relatório de fornecedor, conferindo conteúdo e margens.

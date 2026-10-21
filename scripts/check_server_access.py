@@ -30,10 +30,12 @@ with tempfile.TemporaryDirectory() as directory:
             assert not page.locator('#demo-profile').count()
             result=page.evaluate('''async()=>{
                 await api('areas','POST',{name:'Compras'});
+                const macro=await api('macroprocesses','POST',{name:'Gestão'});
+                const process=await api('processes','POST',{name:'Compras',macroprocess_id:macro.id});
                 const auditor=await api('auditors','POST',{name:'Ana',qualifications:{'ISO 9001:2015':['leader','auditor']}});
                 const state=await api('data');
                 const r=state.requirements.find(r=>r.norm==='ISO 9001:2015'&&r.code==='8.4');
-                await api('audits','POST',{audit_type:'I',year:new Date().getFullYear(),month:3,area:'Compras',lead:'Ana',lead_id:auditor.id,norms:['ISO 9001:2015'],team_ids:[],requirement_ids:[r.id],requirements:'8.4',status:'Programada'});
+                await api('audits','POST',{audit_type:'I',macroprocess_ids:[macro.id],process_ids:[process.id],year:new Date().getFullYear(),month:3,area:'Compras',lead:'Ana',lead_id:auditor.id,norms:['ISO 9001:2015'],team_ids:[],requirement_ids:[r.id],requirements:'8.4',status:'Programada'});
                 return await api('users','POST',{username:'ana.rede',full_name:'Ana da Rede',email:'ana@example.com',role:'user',auditor_id:auditor.id});
             }''')
             password=result['temporary_password']
@@ -56,9 +58,11 @@ with tempfile.TemporaryDirectory() as directory:
             page.get_by_role('button',name='Gerar relatório',exact=True).click()
             page.get_by_role('button',name='Editar relatório',exact=True).click()
             page.locator('[name=participants]').fill('Ana')
-            page.locator('[name=conclusion]').fill('Verificação realizada')
+            assert page.locator('[name=conclusion]').count()==0
+            page.locator('[name=participants]').fill('Ana, participante de teste')
+            page.locator('[name=status]').select_option('Concluída')
             page.get_by_role('button',name='Salvar registro',exact=True).click()
-            page.get_by_text('Verificação realizada',exact=True).wait_for()
+            page.get_by_text('Ana, participante de teste',exact=True).wait_for()
             assert not errors,errors
             browser.close()
             print('PASS: real server first-admin setup, login, role restrictions, leader-owned plan and report.')

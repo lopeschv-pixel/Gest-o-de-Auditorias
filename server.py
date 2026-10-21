@@ -24,6 +24,8 @@ def connection():
     con.execute('CREATE TABLE IF NOT EXISTS counters (kind TEXT, year INTEGER, sequence INTEGER NOT NULL, PRIMARY KEY(kind,year))')
     con.execute('CREATE TABLE IF NOT EXISTS auditors (id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
     con.execute('CREATE TABLE IF NOT EXISTS requirements (id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
+    con.execute('CREATE TABLE IF NOT EXISTS macroprocesses (id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE)')
+    con.execute('CREATE TABLE IF NOT EXISTS processes (id INTEGER PRIMARY KEY,macroprocess_id INTEGER NOT NULL REFERENCES macroprocesses(id),name TEXT NOT NULL,UNIQUE(macroprocess_id,name))')
     access.schema(con)
     con.execute('CREATE TABLE IF NOT EXISTS norms (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)')
     for name in NORMS:
@@ -98,6 +100,25 @@ def check_area(con, data):
     data['area'] = ' · '.join(names)
 
 
+def process_catalog(con):
+    return dict(macroprocesses=[dict(id=i,name=n) for i,n in con.execute('SELECT id,name FROM macroprocesses ORDER BY name')],processes=[dict(id=i,macroprocess_id=m,name=n) for i,m,n in con.execute('SELECT id,macroprocess_id,name FROM processes ORDER BY name')])
+
+
+def check_processes(con,data):
+    macros=data.get('macroprocess_ids',[]);processes=data.get('process_ids',[])
+    if not isinstance(macros,list) or not isinstance(processes,list) or not macros or not processes:
+        raise ValueError('Selecione pelo menos um macroprocesso e um processo')
+    if len(set(macros))!=len(macros) or len(set(processes))!=len(processes):
+        raise ValueError('Seleções de processos duplicadas')
+    catalog=process_catalog(con)
+    if any(not any(m['id']==mid for m in catalog['macroprocesses']) for mid in macros) or any(not any(p['id']==pid and p['macroprocess_id'] in macros for p in catalog['processes']) for pid in processes):
+        raise ValueError('Selecione processos vinculados aos macroprocessos escolhidos')
+    if any(not any(p['id'] in processes and p['macroprocess_id']==mid for p in catalog['processes']) for mid in macros):
+        raise ValueError('Selecione um processo por macroprocesso')
+    data['macroprocesses']=' · '.join(next(m['name'] for m in catalog['macroprocesses'] if m['id']==mid) for mid in macros)
+    data['processes']='\n'.join(next(m['name'] for m in catalog['macroprocesses'] if m['id']==p['macroprocess_id'])+' › '+p['name'] for pid in processes for p in catalog['processes'] if p['id']==pid)
+
+
 def catalog(con, table):
     return [dict(json.loads(payload), id=i) for i,payload in con.execute(f'SELECT id,payload FROM {table}')]
 
@@ -164,15 +185,43 @@ def validate_periods(periods):
     return rows
 
 
+def normalize_finding(con, data, audit):
+    result=dict(audit_id=data['audit_id'],kind=data['kind'],area=audit['area'],description=data['description'].strip(),auditor_name=(audit.get('plan') or audit).get('lead',''))
+    if data['kind'] in ['Conformidade','Não conformidade']:
+        ids=data['requirement_ids']
+        if len(set(ids))!=len(ids):
+            raise ValueError('Requisitos duplicados')
+        requirements=catalog(con,'requirements')
+        selected=[next((r for r in requirements if r['id']==rid),None) for rid in ids]
+        plan=audit.get('plan',{})
+        allowed=plan.get('requirement_ids')
+        if any(not r or (r['id'] not in allowed if allowed else r['norm'] not in plan.get('norms',[])) for r in selected):
+            raise ValueError('Selecione requisitos que pertencem ao plano da auditoria')
+        result.update(requirement_ids=ids,requirements='\n'.join(f"{r['norm']} · {r['code']} — {r.get('title','')}" for r in selected),evidence=data['evidence'].strip())
+        if data['kind']=='Não conformidade':
+            result['pac']=data['pac'].strip()
+    return result
+
+
 def validate(data, finding=False):
-    required = ['audit_id', 'kind', 'area', 'description', 'requirements', 'evidence'] if finding else ['audit_type', 'year', 'month', 'area', 'lead', 'norms', 'requirements']
-    for key in required:
-        if not data.get(key) or isinstance(data[key], str) and not data[key].strip():
-            raise ValueError('Preencha o campo: ' + key)
     if finding:
-        if data['kind'] not in ['Não conformidade', 'Observação', 'Oportunidade de melhoria']:
-            raise ValueError('Tipo de constatação inválido')
-        if data['kind'] == 'Não conformidade' and not data.get('pac', '').strip():
+        required = ['audit_id','kind','description']
+    else:
+        required = ['audit_type','year','month','area','lead','norms','requirements']
+    for key in required:
+        if not data.get(key) or isinstance(data[key],str) and not data[key].strip():
+            raise ValueError('Preencha o campo: '+key)
+    if finding:
+        if not isinstance(data.get('description'),str):
+            raise ValueError('Informe a descrição da constatação')
+        if data['kind'] not in ['Conformidade','Não conformidade','Observação','Oportunidade de melhoria']:
+            raise ValueError('Classificação inválida')
+        if data['kind'] in ['Conformidade','Não conformidade']:
+            if not isinstance(data.get('requirement_ids'),list) or not data['requirement_ids']:
+                raise ValueError('Selecione requisitos do plano')
+            if not isinstance(data.get('evidence'),str) or not data['evidence'].strip():
+                raise ValueError('Informe a evidência encontrada' if data['kind']=='Conformidade' else 'Informe as evidências objetivas')
+        if data['kind']=='Não conformidade' and (not isinstance(data.get('pac'),str) or not data['pac'].strip()):
             raise ValueError('Informe o número do PAC da não conformidade')
     else:
         if data['audit_type'] not in ['I', 'F']:
@@ -199,7 +248,9 @@ def validate(data, finding=False):
             raise ValueError('Gere o plano primeiro')
         if (data.get('report') or data['status'] in ['Planejada', 'Em execução', 'Concluída']) and not (plan and plan.get('confirmed') is True):
             raise ValueError('Confirme o plano antes de gerar o relatório')
-        if data['status'] == 'Concluída' and not data.get('report', {}).get('conclusion', '').strip():
+        if data['audit_type']=='I' and isinstance(data.get('report'),dict):
+            data['report'].pop('conclusion',None)
+        if data['audit_type']=='F' and data['status'] == 'Concluída' and not data.get('report', {}).get('conclusion', '').strip():
             raise ValueError('Informe a conclusão do relatório')
 
 class Handler(SimpleHTTPRequestHandler):
@@ -240,11 +291,12 @@ class Handler(SimpleHTTPRequestHandler):
                 auditors = catalog(con, 'auditors')
                 requirements = catalog(con, 'requirements')
                 norms = [n for (n,) in con.execute('SELECT name FROM norms ORDER BY id')]
+                processes = process_catalog(con)
                 users = access.users(con) if user['role'] == 'admin' else []
             if user['role'] != 'admin':
                 audits = [a for a in audits if access.can_manage(user,a)]
                 findings = [f for f in findings if any(a['id']==f['audit_id'] for a in audits)]
-            return self.send_json(dict(current_user=user,users=users,audits=audits, findings=findings, areas=areas, auditors=auditors, requirements=requirements, norms=norms, requirement_sources=requirement_sources()))
+            return self.send_json(dict(**processes,current_user=user,users=users,audits=audits, findings=findings, areas=areas, auditors=auditors, requirements=requirements, norms=norms, requirement_sources=requirement_sources()))
         if self.path.startswith('/api/'):
             return self.send_json({'error': 'Não encontrado'}, 404)
         super().do_GET()
@@ -311,6 +363,26 @@ class Handler(SimpleHTTPRequestHandler):
                     con.execute('BEGIN IMMEDIATE')
                     new_user, temporary = access.create_user(con,data,catalog(con,'auditors'))
                 return self.send_json(dict(user=new_user,temporary_password=temporary),201)
+            if self.path in ['/api/macroprocesses','/api/processes'] and self.command=='POST':
+                name=str(data.get('name','')).strip()
+                if not name or len(name)>150:
+                    raise ValueError('Informe um nome de até 150 caracteres')
+                with connection() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    if self.path=='/api/macroprocesses':
+                        if any(n.casefold()==name.casefold() for (n,) in con.execute('SELECT name FROM macroprocesses')):
+                            raise ValueError('Macroprocesso já cadastrado')
+                        rid=con.execute('INSERT INTO macroprocesses(name) VALUES (?)',(name,)).lastrowid
+                        result=dict(id=rid,name=name)
+                    else:
+                        mid=int(data.get('macroprocess_id') or 0)
+                        if not con.execute('SELECT 1 FROM macroprocesses WHERE id=?',(mid,)).fetchone():
+                            raise ValueError('Selecione um macroprocesso cadastrado')
+                        if any(n.casefold()==name.casefold() for (n,) in con.execute('SELECT name FROM processes WHERE macroprocess_id=?',(mid,))):
+                            raise ValueError('Processo já cadastrado neste macroprocesso')
+                        rid=con.execute('INSERT INTO processes(macroprocess_id,name) VALUES (?,?)',(mid,name)).lastrowid
+                        result=dict(id=rid,name=name,macroprocess_id=mid)
+                return self.send_json(result,201)
             if self.path.startswith('/api/requirements/') and self.command == 'PUT':
                 title = str(data.get('title','')).strip()
                 if not title:
@@ -372,6 +444,7 @@ class Handler(SimpleHTTPRequestHandler):
                         raise PermissionError('Você não é o líder desta auditoria')
                     if not audit or not json.loads(audit[0]).get('plan', {}).get('confirmed'):
                         raise ValueError('Confirme o plano antes de registrar o relatório')
+                    data=normalize_finding(con,data,dict(json.loads(audit[0]),id=int(data['audit_id'])))
                     row = con.execute('INSERT INTO findings(audit_id,payload) VALUES (?,?)', (int(data['audit_id']), json.dumps(data))).lastrowid
                 return self.send_json({'id': row}, 201)
             if self.path == '/api/audits' and self.command == 'POST':
@@ -379,6 +452,7 @@ class Handler(SimpleHTTPRequestHandler):
                 with connection() as con:
                     con.execute('BEGIN IMMEDIATE')
                     check_area(con, data)
+                    check_processes(con,data)
                     check_selections(con, data, required=True)
                     if data.get('plan'):
                         check_selections(con, data['plan'], required=True)
@@ -399,6 +473,8 @@ class Handler(SimpleHTTPRequestHandler):
                         data['code'] = previous['code']
                         data.pop('title', None)
                         check_area(con, data)
+                        if previous.get('macroprocess_ids')!=data.get('macroprocess_ids') or previous.get('process_ids')!=data.get('process_ids'):
+                            check_processes(con,data)
                         if any(previous.get(k) != data.get(k) for k in ['norms','lead_id','team_ids','observer_ids','requirement_ids','lead','team','requirements']):
                             check_selections(con, data, required=True)
                         if data.get('plan') and previous.get('plan') != data['plan']:

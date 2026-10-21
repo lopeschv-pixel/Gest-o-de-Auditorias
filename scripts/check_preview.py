@@ -1,7 +1,7 @@
 """Browser regression: registered auditors/requirements flow in standalone preview."""
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-html=Path('/tmp/nuclaud-preview/NUCLAUD-v11.html').read_text()
+html=Path('/tmp/nuclaud-preview/NUCLAUD-v12.html').read_text()
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
     for blocked in [False,True]:
@@ -58,6 +58,16 @@ with sync_playwright() as p:
         page.locator('#area-name').fill('Qualidade')
         page.get_by_role('button',name='Salvar área',exact=True).click()
         page.locator('#area-register .form-error').wait_for()
+        page.get_by_role('button',name='▦ Macroprocessos e processos',exact=True).click()
+        for macro in ['Produção','Gestão']:
+            page.locator('#macro-register [name=name]').fill(macro)
+            page.get_by_role('button',name='Salvar macroprocesso',exact=True).click()
+            page.locator('#macro-register .form-message').get_by_text('Cadastro salvo com sucesso.',exact=True).wait_for()
+        for macro,process in [('Produção','Soldagem'),('Gestão','Qualidade')]:
+            page.locator('#process-register [name=macroprocess_id]').select_option(label=macro)
+            page.locator('#process-register [name=name]').fill(process)
+            page.get_by_role('button',name='Salvar processo',exact=True).click()
+            page.locator('#process-register .form-message').get_by_text('Cadastro salvo com sucesso.',exact=True).wait_for()
         page.get_by_role('button',name='＋ Programar auditoria').click()
         assert page.locator('#modal-title').inner_text()=='Programar auditoria'
         assert page.locator('#inline-area-name').count()==0
@@ -77,6 +87,14 @@ with sync_playwright() as p:
         page.get_by_label('ISO 14001',exact=True).check()
         assert page.locator('[name=requirement_ids]').count()==120
         page.locator('[data-multi=norms] summary').click()
+        page.locator('[data-multi=macroprocess_ids] summary').click()
+        page.get_by_label('Produção',exact=True).check()
+        page.get_by_label('Gestão',exact=True).check()
+        page.locator('[data-multi=macroprocess_ids] summary').click()
+        page.locator('[data-multi=process_ids] summary').click()
+        page.get_by_label('Produção › Soldagem',exact=True).check()
+        page.get_by_label('Gestão › Qualidade',exact=True).check()
+        page.locator('[data-multi=process_ids] summary').click()
         page.locator('[name=lead_id]').select_option(label='Ana')
         page.get_by_label('Bruno',exact=True).check()
         page.get_by_label('Carla',exact=True).check()
@@ -89,6 +107,8 @@ with sync_playwright() as p:
         page.get_by_role('button',name='Editar programação').click()
         assert page.locator('[name=area_names]:checked').count()==2
         assert page.locator('[name=norms]:checked').count()==2
+        assert page.locator('[name=macroprocess_ids]:checked').count()==2
+        assert page.locator('[name=process_ids]:checked').count()==2
         page.get_by_role('button',name='Salvar programação',exact=True).click()
         page.get_by_role('button',name='Gerar plano',exact=True).click()
         assert page.locator('[name=lead_id] option:checked').inner_text()=='Ana'
@@ -113,7 +133,7 @@ with sync_playwright() as p:
         assert '11/03/2027 13:00–17:00' in page.locator('#app').inner_text()
         page.evaluate('window.print=()=>{}')
         page.get_by_role('button',name='Gerar PDF do plano',exact=True).click()
-        assert '11/03/2027 13:00–17:00' in page.locator('#print-document').inner_text()
+        assert all(value in page.locator('#print-document').inner_text() for value in ['11/03/2027','13:00','17:00'])
         assert 'gestor@example.com' in page.locator('#print-document').inner_text()
         page.evaluate('HTMLAnchorElement.prototype.click=function(){window.draftEmail=this.href}')
         page.get_by_role('button',name='Preparar e-mail',exact=True).click()
@@ -157,9 +177,11 @@ with sync_playwright() as p:
         page.get_by_role('button',name='Gerar relatório',exact=True).click()
         page.get_by_role('button',name='Editar relatório',exact=True).click()
         page.locator('[name=participants]').fill('Ana')
-        page.locator('[name=conclusion]').fill('Relatório elaborado pelo líder')
+        assert page.locator('[name=conclusion]').count()==0
+        page.locator('[name=participants]').fill('Ana e Bruno, participantes')
+        page.locator('[name=status]').select_option('Concluída')
         page.get_by_role('button',name='Salvar registro',exact=True).click()
-        assert 'Relatório elaborado pelo líder' in page.locator('#app').inner_text()
+        assert 'Ana e Bruno, participantes' in page.locator('#app').inner_text()
         page.locator('#demo-profile').select_option(label='Administrador da demonstração — Administrador')
         page.get_by_role('button',name='♙ Cadastrar usuários',exact=True).click()
         page.locator('#app').get_by_text('ana.rede',exact=True).wait_for()

@@ -26,6 +26,8 @@ class AccessWorkflow(unittest.TestCase):
         for name in ['Ana','Bruno']:
             self.auditors.append(self.call(self.admin,'auditors',dict(name=name,qualifications={'ISO 9001:2015':['leader','auditor']})))
         self.call(self.admin,'areas',{'name':'Qualidade'})
+        self.macro=self.call(self.admin,'macroprocesses',dict(name='Gestão'))
+        self.process=self.call(self.admin,'processes',dict(name='Qualidade',macroprocess_id=self.macro['id']))
         self.req=self.call(self.admin,'requirements',dict(norm='ISO 9001:2015',code='8.4',title='Fornecimento externo'))
         self.own=self.make_audit(0)
         self.other=self.make_audit(1)
@@ -51,7 +53,7 @@ class AccessWorkflow(unittest.TestCase):
         self.assertEqual(ctx.exception.code,status)
 
     def make_audit(self,leader):
-        aid=self.call(self.admin,'audits',dict(audit_type='I',year=2027,month=3,area='Qualidade',norms=['ISO 9001:2015'],lead=self.auditors[leader]['name'],lead_id=self.auditors[leader]['id'],team_ids=[self.auditors[1-leader]['id']],requirement_ids=[self.req['id']],requirements='8.4',status='Programada'))['id']
+        aid=self.call(self.admin,'audits',dict(audit_type='I',macroprocess_ids=[self.macro['id']],process_ids=[self.process['id']],year=2027,month=3,area='Qualidade',norms=['ISO 9001:2015'],lead=self.auditors[leader]['name'],lead_id=self.auditors[leader]['id'],team_ids=[self.auditors[1-leader]['id']],requirement_ids=[self.req['id']],requirements='8.4',status='Programada'))['id']
         return next(a for a in self.call(self.admin,'data')['audits'] if a['id']==aid)
 
     def test_authentication_and_passwords_are_not_exposed(self):
@@ -75,7 +77,7 @@ class AccessWorkflow(unittest.TestCase):
         self.assertEqual([a['id'] for a in state['audits']],[self.own['id']])
         self.assertEqual(state['users'],[])
         self.assertEqual(state['current_user']['role'],'user')
-        for path,body in [('areas',{'name':'Forbidden'}),('norms',{'name':'Forbidden'}),('auditors',{}),('requirements',{}),('users',{'role':'admin'}),('audits',self.other)]:
+        for path,body in [('macroprocesses',{'name':'Forbidden'}),('processes',{}),('areas',{'name':'Forbidden'}),('norms',{'name':'Forbidden'}),('auditors',{}),('requirements',{}),('users',{'role':'admin'}),('audits',self.other)]:
             self.fails(403,self.regular,path,body)
         self.fails(403,self.regular,'audits/'+str(self.other['id']),self.other,'PUT')
         self.fails(403,self.regular,'requirements/'+str(self.req['id']),{'title':'Alteração indevida'},'PUT')
@@ -92,7 +94,7 @@ class AccessWorkflow(unittest.TestCase):
         self.fails(403,self.regular,'audits/'+str(audit['id']),changed,'PUT')
         current['plan']['confirmed']=True;current['status']='Planejada'
         self.call(self.regular,'audits/'+str(audit['id']),current,'PUT')
-        finding=dict(audit_id=audit['id'],kind='Não conformidade',area='Qualidade',description='Registro ausente',requirements='8.4',evidence='Registro verificado',pac='PAC-001')
+        finding=dict(requirement_ids=[self.req['id']],audit_id=audit['id'],kind='Não conformidade',area='Qualidade',description='Registro ausente',requirements='8.4',evidence='Registro verificado',pac='PAC-001')
         self.call(self.regular,'findings',finding)
         self.fails(403,self.regular,'findings',dict(finding,audit_id=self.other['id']))
         current=self.call(self.regular,'data')['audits'][0]
