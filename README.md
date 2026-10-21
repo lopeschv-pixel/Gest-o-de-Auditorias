@@ -1,55 +1,52 @@
 # NUCLAUD — NUCLEP
 
-Gestão de auditorias: programação anual → calendário → geração e confirmação do plano → emissão do plano → relatório.
+Gestão de auditorias: programação anual → calendário → plano com dias e horários → confirmação → emissão → relatório com constatações e referência ao PAC externo.
 
 ## Executar
 
-Requer Python 3.12+, sem dependências externas.
+Python 3.12+, sem dependências externas:
 
 ```sh
 cd /workspace/Gest-o-de-Auditorias
 python server.py
 ```
 
-Porta padrão 8000 (`PORT` para alterar). SQLite em `data/nuclaud.db`, ignorado pelo Git (`NUCLAUD_DB` para alterar). Faça backup com o serviço parado.
+Porta padrão 8000 (`PORT` para alterar). SQLite em `data/nuclaud.db` (`NUCLAUD_DB` para alterar), ignorado pelo Git. Faça backup com o serviço parado.
 
-## Fluxo
+## Fluxo e cadastros
 
-- **Programar auditorias:** tipo (Interna ou Fornecedores), ano (2000–2100), normas selecionáveis, área cadastrada, mês previsto, auditor líder, auditores e requisitos. Não há título. O código é gerado ao salvar: AUDI-I-001-2027 ou AUDI-F-001-2027; a sequência é independente por tipo e ano. Tipo e ano ficam preservados após gerar o código. O menu Cadastrar áreas permite incluir as opções disponíveis. Referenciais: ISO 9001:2015, ANSN 1.16, ISO 14001, ISO 45001 e ASME III.
-- **Calendário:** selecione o ano e use Gerar plano na auditoria. O plano copia a programação, permite ajustar data específica, auditores e requisitos, preservando a programação original.
-- **Confirmar plano:** após conferir, confirme para habilitar emissão e relatório. Alterações no plano antes do relatório exigem nova confirmação. Planos com relatório iniciado ficam preservados.
-- **PDF:** Gerar PDF abre a impressão do navegador; escolha Salvar como PDF. O documento contém somente o plano ou o relatório escolhido.
-- **E-mail:** Preparar e-mail abre o aplicativo de e-mail configurado com destinatário, assunto e plano no corpo. Não envia automaticamente e não anexa PDF; anexe o PDF manualmente se desejar.
-- **Gerar relatório:** disponível após confirmar o plano, com participantes, conclusão e constatações. Não conformidades exigem número do PAC; o tratamento ocorre no sistema externo.
+- Cadastre áreas no menu lateral. Os formulários de áreas e normas ficam na própria página, com confirmação/erro de salvamento.
+- Cadastre normas e requisitos. Cada requisito tem apenas norma e código, sem campo descrição. Os requisitos oficiais ainda não foram importados: veja [REQUIREMENTS.md](REQUIREMENTS.md).
+- Cadastre auditores com habilitações independentes por norma: Auditor líder, Auditor e Observador. Funções antigas foram preservadas na migração.
+- Na programação, selecione tipo, ano, uma ou mais áreas, uma ou mais normas, mês, líder, equipe, observadores e requisitos cadastrados. Não há título nem cadastro de áreas dentro da programação. Códigos automáticos: AUDI-I-001-2027 / AUDI-F-001-2027, com sequência por tipo e ano. Tipo e ano ficam preservados após gerar o código.
+- O líder precisa ter habilitação de líder em todas as normas; membros/observadores precisam da respectiva função em pelo menos uma norma. Uma pessoa não ocupa duas funções na mesma auditoria. Pelo menos um requisito por norma deve ser selecionado.
+- Pelo calendário, gere o plano. Ele aproveita a programação, permite alterar a equipe e os requisitos, adicionar vários dias/períodos com horário de início/fim por dia, objetivo/escopo, local e e-mail do gestor. É possível ter períodos separados no mesmo dia; sobreposição e fim anterior ao início são bloqueados.
+- Confirmar o plano habilita PDF e preparação de e-mail. O PDF usa a impressão do navegador. O e-mail abre no aplicativo configurado, já preenchido; envio é manual, assim como anexar PDF.
+- Gerar relatório fica dentro da auditoria, acessada pelo calendário. Não há menu lateral de relatório. Registre participantes, conclusão, constatações e evidências. Não conformidades exigem o número do PAC; tratamento em sistema externo.
 
-## Prévia sem instalação
+## Planejamento e ranqueamento
 
-`python scripts/build_preview.py` gera `/tmp/nuclaud-preview/NUCLAUD-v8.html`. Baixe e abra no navegador. Essa versão usa armazenamento local do navegador, separado do SQLite e dos arquivos de prévia anteriores. A fonte de interface é a mesma do servidor. Referenciais antigos são atualizados nos registros carregados; não há migração automática de planos legados.
+Planejamento de auditores mostra, por pessoa e ano do programa, as auditorias designadas, função e dias/horários (ou mês previsto quando não há plano). Ranqueamento de auditores é o subitem, com ordenação por mais/menos pontos.
+
+- Líder: 2 pontos por auditoria; auditor: 1; observador: 0.
+- Uma auditoria é contada uma única vez por pessoa, sem multiplicar por dias, períodos ou normas.
+- O plano salvo, inclusive rascunho, substitui a equipe da programação para o cálculo. Não há soma duplicada entre fases.
+- Todos os auditores cadastrados aparecem no ranqueamento, incluindo os com zero pontos. Os totais são calculados dos registros atuais; alterações de equipe não acumulam pontos antigos.
+
+## Demonstração no GitHub Pages
+
+`python scripts/build_preview.py` gera `/tmp/nuclaud-preview/NUCLAUD-v9.html` a partir da mesma interface do servidor. Publicado como index.html na branch gh-pages. Ativação do Pages depende das configurações do repositório; publicação só é confirmada quando o provedor concluir a implantação.
+
+A demonstração usa armazenamento local do navegador, separado do SQLite. Mantém a mesma chave de dados das prévias anteriores. Se o navegador bloquear armazenamento, os registros ficam apenas na sessão e há um aviso. Não limpar/resetar o armazenamento para atualizar o aplicativo.
+
+Planos antigos com uma data continuam visíveis, sem inventar horários; ao editar, informe os horários. Descrições antigas de requisitos ficam preservadas nos registros históricos, mas não são exigidas ou exibidas no cadastro novo.
 
 ## Verificação
 
-`python -m unittest discover -s tests -v` testa API com banco temporário. `node --check static/app.js` verifica sintaxe.
+- `python -m unittest discover -s tests -v`: API, banco temporário, requisitos sem descrição e períodos múltiplos/invalidade.
+- `node tests/test_planning.cjs`: pontuação, troca da equipe no plano, filtros anuais, zeros, ordenação, compatibilidade e períodos sobrepostos.
+- `python scripts/build_preview.py && python scripts/check_preview.py`: teste no Chromium/Playwright dos cadastros, seleção múltipla, plano com dois dias, PDF/e-mail, planejamento, ranking e persistência, inclusive armazenamento bloqueado. Requer Playwright e `/usr/bin/chromium`.
 
 ## Limites
 
-Protótipo para avaliação em ambiente restrito: sem autenticação, perfis de acesso, anexos, revisão formal, exclusão ou edição de constatações. Requisitos informados por texto, sem reproduzir documentos licenciados. E-mails dependem de aplicativo configurado no dispositivo. Não há integração com o sistema de PACs.
-
-A programação usa um campo Áreas e um campo Normas, ambos de seleção múltipla. Abra o campo e marque as opções cadastradas. Os cadastros ficam exclusivamente nos menus laterais. As áreas selecionadas persistem em area_names; area mantém um resumo legível para documentos e compatibilidade.
-
-Teste de regressão da prévia: `python scripts/build_preview.py && python scripts/check_preview.py` (requer Playwright e Chromium em `/usr/bin/chromium`). Verifica cadastro, seleção de áreas, programação, recarga e armazenamento bloqueado.
-
-## Cadastros de auditores e requisitos
-
-Cadastrar auditores: nome e habilitação por norma (não habilitado, auditor líder ou somente auditor). O líder também pode integrar equipes como auditor. Cadastrar requisitos: norma, código e descrição; códigos iguais são permitidos em normas diferentes, mas não duplicados na mesma norma.
-
-Na programação e no plano, selecione primeiro as normas. O líder deve estar habilitado como líder em todas as normas selecionadas; a equipe admite pessoas habilitadas em pelo menos uma delas. A mesma pessoa não pode ser líder e membro da equipe simultaneamente. Selecione pelo menos um requisito por norma. Os dados são copiados da programação para o plano. Identificadores dos cadastros e textos selecionados são salvos juntos, preservando a leitura dos registros antigos; ao editar seleções antigas, associe-as aos novos cadastros.
-
-Os novos cadastros persistem no SQLite do servidor ou no armazenamento da prévia. Ainda não há edição/exclusão dos cadastros. `scripts/check_preview.py` valida cadastro e salvamento, filtros de habilitação, requisitos por norma, plano e recarga, incluindo o cenário de armazenamento bloqueado.
-
-## Normas e funções independentes
-
-O menu Cadastrar normas e requisitos permite incluir novas normas além das iniciais, que agora incluem Secretaria Naval. Normas cadastradas aparecem na habilitação dos auditores, no cadastro de requisitos, na programação e no plano.
-
-Por norma, cada pessoa pode ter Auditor líder, Auditor e/ou Observador em caixas independentes. Apenas a função Auditor habilita a seleção na equipe de auditores; Observador habilita a lista separada de observadores. Uma pessoa não ocupa duas funções na mesma auditoria. Para preservar o comportamento anterior, registros antigos com a função líder são migrados para líder e auditor; os novos registros respeitam exclusivamente as caixas marcadas.
-
-Cadastros de áreas e normas: os formulários ficam diretamente na página do menu lateral, sem janela modal. Preencha Nome da área ou Nome da norma e clique em Salvar. A confirmação aparece junto ao campo e o registro aparece na lista. Erros, como duplicidade, são exibidos no próprio formulário.
+Protótipo sem autenticação, perfis de acesso, anexos, revisão formal, exclusão ou edição de cadastros/constatações. Use dados fictícios na demonstração pública. Não há integração com o sistema de PACs. Requisitos oficiais ainda pendentes, conforme REQUIREMENTS.md.

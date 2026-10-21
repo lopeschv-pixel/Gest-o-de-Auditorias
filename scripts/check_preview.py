@@ -1,7 +1,7 @@
 """Browser regression: registered auditors/requirements flow in standalone preview."""
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-html=Path('/tmp/nuclaud-preview/NUCLAUD-v8.html').read_text()
+html=Path('/tmp/nuclaud-preview/NUCLAUD-v9.html').read_text()
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
     for blocked in [False,True]:
@@ -37,7 +37,7 @@ with sync_playwright() as p:
             page.get_by_role('button',name='＋ Cadastrar requisito',exact=True).click()
             page.locator('[name=norm]').select_option(norm)
             page.locator('[name=code]').fill(code)
-            page.locator('[name=description]').fill('Requisito de teste '+code)
+            assert page.locator('[name=description]').count()==0
             page.get_by_role('button',name='Salvar requisito',exact=True).click()
             page.locator('#app').get_by_text(norm+' · '+code,exact=True).wait_for()
         for area in ['Engenharia','Qualidade']:
@@ -88,13 +88,47 @@ with sync_playwright() as p:
         assert page.locator('[name=team_ids]:checked').count()==1
         assert page.locator('[name=observer_ids]:checked').count()==1
         assert page.locator('[name=requirement_ids]:checked').count()==2
-        page.locator('[name=date]').fill('2027-03-10')
+        assert page.locator('[name=agenda]').count()==0
+        assert page.get_by_label('Local',exact=True).count()==1
+        assert page.get_by_label('E-mail do gestor',exact=True).count()==1
+        page.locator('[name=manager_email]').fill('gestor@example.com')
+        page.locator('[name=period_date]').fill('2027-03-10')
+        page.locator('[name=period_start]').fill('08:00')
+        page.locator('[name=period_end]').fill('12:00')
+        page.get_by_role('button',name='＋ Adicionar dia / período').click()
+        page.locator('[name=period_date]').nth(1).fill('2027-03-11')
+        page.locator('[name=period_start]').nth(1).fill('13:00')
+        page.locator('[name=period_end]').nth(1).fill('17:00')
         page.get_by_role('button',name='Salvar plano para conferência').click()
         page.get_by_role('button',name='Confirmar plano',exact=True).click()
         page.get_by_role('button',name='Gerar PDF do plano').wait_for()
+        assert '10/03/2027 08:00–12:00' in page.locator('#app').inner_text()
+        assert '11/03/2027 13:00–17:00' in page.locator('#app').inner_text()
+        page.evaluate('window.print=()=>{}')
+        page.get_by_role('button',name='Gerar PDF do plano',exact=True).click()
+        assert '11/03/2027 13:00–17:00' in page.locator('#print-document').inner_text()
+        assert 'gestor@example.com' in page.locator('#print-document').inner_text()
+        page.evaluate('HTMLAnchorElement.prototype.click=function(){window.draftEmail=this.href}')
+        page.get_by_role('button',name='Preparar e-mail',exact=True).click()
+        assert page.evaluate('window.draftEmail').startswith('mailto:gestor%40example.com')
         assert 'Engenharia · Qualidade' in page.locator('#app').inner_text()
         assert 'Bruno' in page.locator('#app').inner_text()
         assert 'Carla' in page.locator('#app').inner_text()
+        assert page.locator('nav [data-view=reports]').count()==0
+        page.get_by_role('button',name='♙ Planejamento de auditores',exact=True).click()
+        assert '10/03/2027 08:00–12:00' in page.locator('#app').inner_text()
+        assert '2 pontos' in page.locator('#app').inner_text()
+        page.get_by_role('button',name='↳ Ranqueamento de auditores',exact=True).click()
+        rows=page.locator('#app tbody tr')
+        assert rows.nth(0).locator('td').last.inner_text()=='2'
+        assert 'Ana' in rows.nth(0).inner_text()
+        assert 'Bruno' in rows.nth(1).inner_text()
+        assert 'Carla' in rows.nth(2).inner_text()
+        page.locator('#rank-order').select_option('asc')
+        assert 'Carla' in page.locator('#app tbody tr').first.inner_text()
+        page.get_by_role('button',name='◫ Calendário',exact=True).click()
+        page.get_by_role('button',name='Gerar relatório',exact=True).click()
+        page.get_by_role('button',name='Editar relatório',exact=True).wait_for()
         if blocked:
             page.locator('#storage-warning').wait_for()
         else:

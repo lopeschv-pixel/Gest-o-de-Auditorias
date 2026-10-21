@@ -144,6 +144,25 @@ class Workflow(unittest.TestCase):
         self.assertEqual(saved['qualifications']['Secretaria Naval'],['leader'])
         self.assertEqual(saved['qualifications']['Norma de teste'],['leader','auditor'])
 
+    def test_requirement_without_description_and_multiple_periods(self):
+        req=self.request('/api/requirements',dict(norm='ISO 45001',code='8.1'))
+        self.assertNotIn('description',req)
+        self.request('/api/areas',{'name':'Operação'})
+        audit=dict(audit_type='I',year=2037,month=3,area='Operação',lead='Auditor líder',requirements='8.1',norms=['ISO 45001'],lead_id=1,team_ids=[],requirement_ids=[req['id']],status='Programada')
+        aid=self.request('/api/audits',audit)['id']
+        periods=[dict(date='2037-03-11',start='13:00',end='17:00'),dict(date='2037-03-10',start='08:00',end='12:00')]
+        plan=dict(lead='Auditor líder',norms=['ISO 45001'],requirements='8.1',lead_id=1,team_ids=[],requirement_ids=[req['id']],periods=periods,manager_email='gestor@example.com',location='Sala de reunião',confirmed=False)
+        self.request('/api/audits/'+str(aid),dict(audit,plan=plan,status='Plano em rascunho'),'PUT')
+        saved=next(a for a in self.request('/api/data')['audits'] if a['id']==aid)
+        self.assertEqual(saved['plan']['date'],'2037-03-10')
+        self.assertEqual(saved['plan']['periods'][1]['start'],'13:00')
+        self.assertEqual(saved['plan']['manager_email'],'gestor@example.com')
+        self.assertNotIn('description',saved['plan'])
+        for invalid in [[],[dict(date='2037-03-10',start='17:00',end='08:00')],[dict(date='2037-03-10',start='08:00',end='12:00'),dict(date='2037-03-10',start='11:00',end='17:00')]]:
+            with self.assertRaises(urllib.error.HTTPError):
+                self.request('/api/audits/'+str(aid),dict(audit,plan=dict(plan,periods=invalid),status='Plano em rascunho'),'PUT')
+        self.assertEqual(server.validate_periods([dict(date='2037-03-10',start='08:00',end='12:00'),dict(date='2037-03-10',start='13:00',end='17:00')])[1]['start'],'13:00')
+
     def test_ui_is_served(self):
         with urllib.request.urlopen(self.url+'/') as r:
             self.assertIn('NUCLAUD',r.read().decode())

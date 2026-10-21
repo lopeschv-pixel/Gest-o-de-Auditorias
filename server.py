@@ -104,7 +104,26 @@ def check_selections(con, data, required=False):
         raise ValueError('Selecione um requisito para cada norma')
     data['lead'] = leader['name']
     data['team'] = ', '.join(next(a['name'] for a in auditors if a['id'] == aid) for aid in team_ids)
-    data['requirements'] = '\n'.join(f"{r['norm']} · {r['code']} — {r['description']}" for r in selected)
+    data['requirements'] = '\n'.join(f"{r['norm']} · {r['code']}" for r in selected)
+
+
+def validate_periods(periods):
+    from datetime import date, time
+    import re
+    if not isinstance(periods, list) or not periods:
+        raise ValueError('Informe pelo menos um dia e horário')
+    rows = []
+    for period in periods:
+        date.fromisoformat(period.get('date', ''))
+        start, end = period.get('start', ''), period.get('end', '')
+        if not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d', start) or not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d', end) or time.fromisoformat(start) >= time.fromisoformat(end):
+            raise ValueError('Informe horários válidos; o fim deve ser posterior ao início')
+        rows.append(dict(date=period['date'], start=start, end=end))
+    rows.sort(key=lambda p: (p['date'], p['start']))
+    for previous, current in zip(rows, rows[1:]):
+        if previous['date'] == current['date'] and previous['end'] > current['start']:
+            raise ValueError('Há períodos sobrepostos no mesmo dia')
+    return rows
 
 
 def validate(data, finding=False):
@@ -129,7 +148,11 @@ def validate(data, finding=False):
         plan = data.get('plan')
         if plan:
             from datetime import date
-            date.fromisoformat(plan.get('date', ''))
+            if 'periods' in plan:
+                plan['periods'] = validate_periods(plan['periods'])
+                plan['date'] = plan['periods'][0]['date']
+            else:
+                date.fromisoformat(plan.get('date', ''))
             if not plan.get('lead', '').strip() or not plan.get('requirements', '').strip():
                 raise ValueError('Informe o auditor líder e os requisitos do plano')
             if not plan.get('norms') or any(n not in norm_names() for n in plan['norms']):
@@ -200,9 +223,9 @@ class Handler(SimpleHTTPRequestHandler):
                         raise ValueError('Informe nome e habilitações válidas')
                     data = dict(name=name, qualifications=qualifications)
                 else:
-                    if data.get('norm') not in norm_names() or not str(data.get('code', '')).strip() or not str(data.get('description', '')).strip():
-                        raise ValueError('Informe norma, código e descrição')
-                    data = dict(norm=data['norm'], code=data['code'].strip(), description=data['description'].strip())
+                    if data.get('norm') not in norm_names() or not str(data.get('code', '')).strip():
+                        raise ValueError('Informe norma e código')
+                    data = dict(norm=data['norm'], code=data['code'].strip())
                 with connection() as con:
                     con.execute('BEGIN IMMEDIATE')
                     entries = catalog(con, table)
