@@ -19,3 +19,10 @@ const old=[{id:99,year:2027,month:7,lead:'Ana',team:'Bruno'}];
 assert.deepEqual(ranking(old,auditors,2027).map(a=>a.total),[2,1,0,0]);
 assert.equal(ranking([{...audits[1],team_ids:[1,2,2]}],auditors,2027)[0].total,2);
 console.log('PASS: points per audit, plan replacement, year filters, zero-score auditors, sorting, legacy records and multiple-day validation.');
+
+const {calendarColor}=require('../static/planning.js');
+for(const [norms,color] of [[['ISO 9001:2015'],'quality'],[['ANSN 1.16','Secretaria Naval'],'nuclear'],[['ISO 14001','ISO 45001'],'sms'],[['ASME III'],'asme'],[['Outra norma'],'default']]){
+ assert.equal(calendarColor({norms,status:'Programada'}),color);
+ assert.equal(calendarColor({norms,status:'Concluída'}),'completed');
+}
+assert.equal(calendarColor({norms:['ISO 9001:2015'],plan:{norms:['ASME III']}}),'asme');

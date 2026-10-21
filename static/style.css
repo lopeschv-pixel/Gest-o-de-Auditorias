@@ -34,3 +34,7 @@ button:disabled{opacity:.4;cursor:not-allowed}.calendar-item{border-top:1px soli
 
 .finding-heading-label{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.finding-card-heading{align-items:center}.report-validation{white-space:pre-wrap;color:#953a32;border-color:#d7a29b;background:#fff3f0}#fields .finding-list{padding:0}#fields .finding-heading-label{flex-direction:row}
 @media print{.finding-card-heading button{display:none!important}}
+
+.finding-actions{display:flex;flex-wrap:wrap;gap:4px}.text-button.danger{color:#a03329}.calendar-legend{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 20px;font-size:11px}.calendar-legend>span{padding:9px 12px;border-radius:5px}.audit-color-quality{background:#dfedff;color:#174b80;border-left-color:#4083c4}.audit-color-nuclear{background:#ffead5;color:#844414;border-left-color:#d77c28}.audit-color-sms{background:#def0df;color:#275a32;border-left-color:#4e995d}.audit-color-asme{background:#fff3bf;color:#705a0c;border-left-color:#c5a728}.audit-color-completed{background:#e1e3e6;color:#49515a;border-left-color:#818995}.audit-card small{color:inherit;opacity:.85}@media print{.finding-actions{display:none!important}}
+
+.calendar-filter{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}.calendar-filter label{font-weight:600;font-size:12px}

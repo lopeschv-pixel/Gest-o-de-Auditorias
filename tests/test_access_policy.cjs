@@ -15,3 +15,6 @@ assert.throws(()=>checkUpdate(user,audit,{...plan,plan:{lead_id:11}}));
 assert.throws(()=>checkUpdate(user,{...audit,lead_id:11},plan));
 assert.doesNotThrow(()=>checkUpdate(admin,audit,{...audit,month:4,lead_id:11}));
 console.log('PASS: demo policies distinguish administration, audit leadership, membership and immutable program fields.');
+
+assert.throws(()=>checkUpdate(user,{...plan,status:'Concluída'},{...plan,status:'Em execução'}));
+assert.doesNotThrow(()=>checkUpdate(admin,{...plan,status:'Concluída'},{...plan,status:'Em execução'}));

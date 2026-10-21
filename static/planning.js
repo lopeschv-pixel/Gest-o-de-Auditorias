@@ -28,7 +28,17 @@
     const list=assignments(audits,auditors,year);
     return auditors.map(a=>{const records=list.filter(x=>x.auditor_id===a.id);return {id:a.id,name:a.name,leaders:records.filter(x=>x.role==='Auditor líder').length,members:records.filter(x=>x.role==='Auditor').length,total:records.reduce((sum,x)=>sum+x.points,0),audits:records.length};}).sort((a,b)=>(ascending?a.total-b.total:b.total-a.total)||a.name.localeCompare(b.name,'pt-BR'));
   }
-  const api={periods,validatePeriods,assignments,ranking};
+  function calendarColor(audit){
+    if(audit.status==='Concluída')return 'completed';
+    const norms=audit.plan?.norms||audit.norms||[];
+    const has=value=>norms.some(n=>n.toUpperCase().includes(value));
+    if(has('ASME'))return 'asme';
+    if(has('ANSN')&&has('SECRETARIA NAVAL'))return 'nuclear';
+    if(has('14001')&&has('45001'))return 'sms';
+    if(has('9001'))return 'quality';
+    return 'default';
+  }
+  const api={calendarColor,periods,validatePeriods,assignments,ranking};
   root.NuclaudPlanning=api;
   if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

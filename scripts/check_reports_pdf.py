@@ -101,7 +101,7 @@ with sync_playwright() as p:
     assert 'Constatação 01' in header.inner_text() and 'Conformidade' in header.inner_text()
     page.get_by_role('button',name='Concluir relatório',exact=True).click()
     assert page.locator('#complete-report').count()==0
-    assert page.locator('#app [data-edit-finding]').count()==0
+    assert page.locator('#app [data-edit-finding]').count()==4  # administrator can correct completed reports
     page.evaluate('window.print=()=>{}')
     page.get_by_role('button',name='Gerar PDF do relatório',exact=True).click()
     print_text=page.locator('#print-document').inner_text()

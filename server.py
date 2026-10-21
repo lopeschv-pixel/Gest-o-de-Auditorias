@@ -307,6 +307,9 @@ class Handler(SimpleHTTPRequestHandler):
     def do_PUT(self):
         self.save()
 
+    def do_DELETE(self):
+        self.save()
+
     def save(self):
         try:
             size = int(self.headers.get('Content-Length', 0))
@@ -356,7 +359,7 @@ class Handler(SimpleHTTPRequestHandler):
                     con.execute('DELETE FROM sessions WHERE user_id=?',(user['id'],))
                     token=access.session(con,user['id'])
                 return self.send_json({'ok':True},200,token)
-            if user['role'] != 'admin' and not (self.path.startswith('/api/audits/') and self.command == 'PUT' or self.path == '/api/findings' and self.command == 'POST' or self.path.startswith('/api/findings/') and self.command=='PUT'):
+            if user['role'] != 'admin' and not (self.path.startswith('/api/audits/') and self.command == 'PUT' or self.path == '/api/findings' and self.command == 'POST' or self.path.startswith('/api/findings/') and self.command in ['PUT','DELETE']):
                 raise PermissionError('Esta operação exige perfil Administrador')
             if self.path == '/api/users' and self.command == 'POST':
                 with connection() as con:
@@ -435,16 +438,19 @@ class Handler(SimpleHTTPRequestHandler):
                         raise ValueError('Essa área já está cadastrada')
                     row = con.execute('INSERT INTO areas(name) VALUES (?)', (name,)).lastrowid
                 return self.send_json({'id': row, 'name': name}, 201)
-            if self.path == '/api/findings' and self.command == 'POST' or self.path.startswith('/api/findings/') and self.command=='PUT':
-                validate(data, True)
+            if self.path == '/api/findings' and self.command == 'POST' or self.path.startswith('/api/findings/') and self.command in ['PUT','DELETE']:
+                if self.command!='DELETE':
+                    validate(data, True)
                 with connection() as con:
                     con.execute('BEGIN IMMEDIATE')
                     finding_id=None
-                    if self.command=='PUT':
+                    if self.command in ['PUT','DELETE']:
                         finding_id=int(self.path.split('/')[-1])
                         old=con.execute('SELECT audit_id FROM findings WHERE id=?',(finding_id,)).fetchone()
                         if not old:
                             return self.send_json({'error':'Constatação não encontrada'},404)
+                        if self.command=='DELETE':
+                            data={'audit_id':old[0]}
                         if int(data['audit_id'])!=old[0]:
                             raise ValueError('Não é permitido transferir a constatação para outra auditoria')
                     audit = con.execute('SELECT payload FROM audits WHERE id=?', (int(data['audit_id']),)).fetchone()
@@ -452,8 +458,15 @@ class Handler(SimpleHTTPRequestHandler):
                         raise PermissionError('Você não é o líder desta auditoria')
                     if not audit or not json.loads(audit[0]).get('plan', {}).get('confirmed'):
                         raise ValueError('Confirme o plano antes de registrar o relatório')
-                    if json.loads(audit[0]).get('status')=='Concluída':
-                        raise ValueError('O relatório está concluído; as constatações estão preservadas')
+                    audit_data=json.loads(audit[0])
+                    if audit_data.get('status')=='Concluída' and user['role']!='admin':
+                        raise PermissionError('Somente administradores podem alterar um relatório concluído')
+                    if audit_data.get('status')=='Concluída':
+                        audit_data['status']='Em execução'
+                        con.execute('UPDATE audits SET payload=? WHERE id=?',(json.dumps(audit_data),int(data['audit_id'])))
+                    if self.command=='DELETE':
+                        con.execute('DELETE FROM findings WHERE id=?',(finding_id,))
+                        return self.send_json({'ok':True})
                     data=normalize_finding(con,data,dict(json.loads(audit[0]),id=int(data['audit_id'])))
                     if finding_id is not None:
                         con.execute('UPDATE findings SET payload=? WHERE id=?',(json.dumps(data),finding_id))

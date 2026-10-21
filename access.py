@@ -101,6 +101,8 @@ def can_manage(user, audit):
 def check_update(user, previous, updated):
     if user['role'] == 'admin':
         return
+    if previous.get('status')=='Concluída':
+        raise PermissionError('Somente administradores podem alterar um relatório concluído')
     if not can_manage(user, previous):
         raise PermissionError('Você só pode gerar planos e relatórios das auditorias em que é líder')
     allowed = {'plan', 'report', 'status', 'id'}
