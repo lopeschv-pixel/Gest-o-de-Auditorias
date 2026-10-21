@@ -159,9 +159,11 @@ for name in ['report-internal','report-supplier','plan']:
     images=subprocess.check_output(['pdfimages','-list',str(pdf)],text=True).splitlines()[2:]
     assert {int(line.split()[0]) for line in images if line.strip()}==set(range(1,len(pages)+1))
     assert 'Rascunho' not in text
+    assert 'NUCLAUD' not in text and 'NUCLEP' not in text
     assert 'Administração do sistema' not in text and 'Perfil de teste' not in text
     assert 'Ana Líder' in text and 'Bruno Auditor' in text
     if name=='report-internal':
+        assert 'Relatório de Auditoria Interna' in text
         assert len(pages)>=2
         assert 'FINAL DA EVIDÊNCIA' in text
         assert 'PAC-2027-001' in text

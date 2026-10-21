@@ -33,14 +33,18 @@ with sync_playwright() as p:
     assert page.locator('.audit-card').count()==5
     for color in ['quality','nuclear','sms','asme','completed']:
         assert page.locator('.audit-card.audit-color-'+color).count()==1,color
-    page.locator('#calendar-norm').select_option('ISO 45001')
+    page.locator('#calendar-norm summary').click()
+    page.locator('#calendar-norm').get_by_label('ISO 45001',exact=True).check()
     assert page.locator('.audit-card').count()==1
     assert page.locator('.audit-card').get_attribute('class').endswith('audit-color-sms')
-    page.locator('#calendar-norm').select_option('ISO 9001:2015')
+    page.locator('#calendar-norm').get_by_label('Todas as normas',exact=True).check()
+    page.locator('#calendar-norm').get_by_label('ISO 9001:2015',exact=True).check()
     assert page.locator('.audit-card').count()==2
-    page.locator('#calendar-norm').select_option('Secretaria Naval')
+    page.locator('#calendar-norm').get_by_label('Todas as normas',exact=True).check()
+    page.locator('#calendar-norm').get_by_label('Secretaria Naval',exact=True).check()
     assert page.locator('.audit-card').count()==1
-    page.locator('#calendar-norm').select_option('')
+    page.locator('#calendar-norm').get_by_label('Todas as normas',exact=True).check()
+    page.locator('#close-calendar-filter').click()
     assert page.locator('.audit-card').count()==5
     # Readonly completed report for regular leader, including direct API calls.
     page.locator('#demo-profile').select_option(label='Ana — Usuário')

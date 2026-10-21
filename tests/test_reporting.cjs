@@ -17,7 +17,7 @@ for(const kind of ['Observação','Oportunidade de melhoria']){
  const card=R.findingCards([result]);assert.ok(!card.includes('Requisitos relacionados'));assert.ok(!card.includes('Evidências objetivas'));assert.ok(!card.includes('Número do PAC'));
 }
 const internal=R.renderDocument(audit,[conform,nc],'report','21/10/2026');
-assert.ok(internal.includes('Relatório de auditoria'));
+assert.ok(internal.includes('Relatório de Auditoria Interna'));
 assert.ok(!internal.includes('Plano de auditoria'));
 assert.ok(!internal.includes('CONCLUSAO ANTIGA'));assert.ok(!internal.includes('Conclusão da auditoria'));
 assert.ok(internal.includes('Ana'));assert.ok(internal.includes('Bruno'));assert.ok(!internal.includes('Equipe prevista'));
@@ -53,3 +53,7 @@ for(const [value,label] of Object.entries(R.qualifications)){
  assert.ok(R.renderDocument(a,[conform],'report','21/10/2026').includes(label));
 }
 assert.throws(()=>R.assertComplete({...audit,audit_type:'F',report:{conclusion:'Observação sem resultado'}},[conform]),/qualificação/);
+
+assert.equal(R.documentTitle(audit,'report'),'Relatório de Auditoria Interna');
+assert.equal(R.documentTitle({...audit,audit_type:'F'},'report'),'Relatório de Auditoria de Fornecedores');
+assert.ok(!internal.includes('NUCLAUD')&&!internal.includes('NUCLEP'));

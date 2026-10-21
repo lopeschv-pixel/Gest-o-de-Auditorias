@@ -26,3 +26,12 @@ for(const [norms,color] of [[['ISO 9001:2015'],'quality'],[['ANSN 1.16','Secreta
  assert.equal(calendarColor({norms,status:'Concluída'}),'completed');
 }
 assert.equal(calendarColor({norms:['ISO 9001:2015'],plan:{norms:['ASME III']}}),'asme');
+
+const {filterCalendar}=require('../static/planning.js');
+const sample=[{id:1,year:2027,code:'AUDI-I-001-2027',area:'Qualidade',norms:['ISO 9001:2015']},{id:2,year:2027,code:'AUDI-I-002-2027',area:'SMS',norms:['ISO 14001','ISO 45001']},{id:3,year:2028,code:'AUDI-I-001-2028',area:'Qualidade',norms:['ISO 9001:2015']}];
+assert.deepEqual(filterCalendar(sample,{year:2027}).map(a=>a.id),[1,2]);
+assert.deepEqual(filterCalendar(sample,{year:2027,norms:['ISO 9001:2015','ISO 45001']}).map(a=>a.id),[1,2]);
+assert.deepEqual(filterCalendar(sample,{year:2027,norms:['ISO 14001','ISO 45001']}).map(a=>a.id),[2]);
+assert.deepEqual(filterCalendar(sample,{year:2027,norms:['ISO 9001:2015'],search:'SMS'}),[]);
+assert.deepEqual(filterCalendar(sample,{year:2027,search:' qualIDADE '}).map(a=>a.id),[1]);
+assert.equal(filterCalendar([{...sample[0],plan:{norms:['ANSN 1.16']}}],{year:2027,norms:['ISO 9001:2015']}).length,0);

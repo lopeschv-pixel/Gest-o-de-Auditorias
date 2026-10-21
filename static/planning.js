@@ -38,7 +38,8 @@
     if(has('9001'))return 'quality';
     return 'default';
   }
-  const api={calendarColor,periods,validatePeriods,assignments,ranking};
+  function filterCalendar(audits,{year,norms=[],search=''}={}){const query=search.trim().toLocaleLowerCase();return audits.filter(a=>(year==null||+a.year===+year)&&(!norms.length||norms.some(n=>(a.plan?.norms||a.norms||[]).includes(n)))&&[a.code,a.area,a.supplier_name,a.lead].join(' ').toLocaleLowerCase().includes(query));}
+  const api={filterCalendar,calendarColor,periods,validatePeriods,assignments,ranking};
   root.NuclaudPlanning=api;
   if(typeof module!=='undefined')module.exports=api;
 })(globalThis);
