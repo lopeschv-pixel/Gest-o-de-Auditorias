@@ -115,6 +115,33 @@ class AccessWorkflow(unittest.TestCase):
         self.fails(404,self.admin,path,{},'DELETE')
         new=self.make_audit(0)
         self.assertEqual(new['code'],'AUDI-I-003-2027')
+        self.call(self.admin,'audits/'+str(new['id']),{},'DELETE')
+        self.call(self.admin,'audits/'+str(self.other['id']),{},'DELETE')
+        restarted=self.make_audit(0)
+        self.assertEqual(restarted['code'],'AUDI-I-001-2027')
+        following=self.make_audit(0)
+        self.assertEqual(following['code'],'AUDI-I-002-2027')
+
+    def test_supplier_program_without_internal_fields_and_rqf(self):
+        body=dict(self.own,audit_type='F',year=2031)
+        for key in ['area','area_names','macroprocess_ids','process_ids','macroprocesses','processes','id','code']:
+            body.pop(key,None)
+        created=self.call(self.admin,'audits',body)
+        supplier=next(a for a in self.call(self.admin,'data')['audits'] if a['id']==created['id'])
+        self.assertEqual(supplier['code'],'AUDI-F-001-2031')
+        self.assertEqual(supplier['area_names'],[])
+        self.assertEqual(supplier['macroprocess_ids'],[])
+        plan={key:copy.deepcopy(supplier[key]) for key in ['lead_id','lead','team_ids','team','norms','requirement_ids','requirements']}
+        plan.update(date='2031-03-10',confirmed=True)
+        supplier.update(plan=plan,status='Planejada')
+        self.call(self.admin,'audits/'+str(supplier['id']),supplier,'PUT')
+        supplier=next(a for a in self.call(self.admin,'data')['audits'] if a['id']==created['id'])
+        self.call(self.regular,'findings',dict(audit_id=supplier['id'],kind='Conformidade',requirement_ids=[self.req['id']],evidence='Fornecimento verificado'))
+        supplier.update(status='Concluída',report=dict(conclusion='Fornecedor qualificado',rqf=' RQF-2031-001 '))
+        self.call(self.regular,'audits/'+str(supplier['id']),supplier,'PUT')
+        saved=next(a for a in self.call(self.admin,'data')['audits'] if a['id']==created['id'])
+        self.assertEqual(saved['report']['rqf'],'RQF-2031-001')
+        self.assertEqual(saved['report']['conclusion'],'Fornecedor qualificado')
 
     def test_administrator_can_edit_auditors_preserving_links(self):
         aid=self.auditors[0]['id'];path='auditors/'+str(aid)

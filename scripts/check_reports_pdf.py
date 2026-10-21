@@ -119,7 +119,8 @@ with sync_playwright() as p:
     page.locator('#modal').get_by_role('button',name='Salvar relatório',exact=True).click()
     page.locator('#modal').wait_for(state='hidden')
     page.get_by_role('button',name='Editar relatório',exact=True).click()
-    page.get_by_label('Conclusão da auditoria de fornecedores',exact=True).fill('Fornecedor avaliado conforme critérios previstos.')
+    page.get_by_label('Conclusão',exact=True).fill('Fornecedor avaliado conforme critérios previstos.')
+    page.get_by_label('Número do RQF',exact=True).fill('RQF-2027-123')
     page.locator('#modal').get_by_role('button',name='Salvar relatório',exact=True).click()
     page.locator('#modal').wait_for(state='hidden')
     page.get_by_role('button',name='Gerar PDF do relatório',exact=True).click()
@@ -154,7 +155,7 @@ for name in ['report-internal','report-supplier','plan']:
         assert 'PAC-2027-001' in text
         assert 'Conclusão' not in text
         assert 'Plano de auditoria' not in text
-    elif name=='report-supplier':assert 'Conclusão da auditoria de fornecedores' in text
+    elif name=='report-supplier':assert 'Conclusão' in text and 'RQF-2027-123' in text
     else:assert 'Plano de auditoria' in text and 'Constatação 01' not in text
     print('PASS:',name,'—',len(pages),'página(s) A4, textos completos e margens verificadas.')
 subprocess.run(['pdftoppm','-f','1','-singlefile','-scale-to','1400','-png',str(root/'report-internal.pdf'),str(root/'report-first-page')],check=True)

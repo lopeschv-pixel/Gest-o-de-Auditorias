@@ -22,8 +22,8 @@ assert.ok(!internal.includes('Plano de auditoria'));
 assert.ok(!internal.includes('CONCLUSAO ANTIGA'));assert.ok(!internal.includes('Conclusão da auditoria'));
 assert.ok(internal.includes('Ana'));assert.ok(internal.includes('Bruno'));assert.ok(!internal.includes('Equipe prevista'));
 assert.ok(internal.includes('Gestão › Qualidade'));assert.ok(internal.includes('Evidências objetivas'));
-const supplier=R.renderDocument({...audit,audit_type:'F',report:{conclusion:'Fornecedor avaliado'}},[],'report','21/10/2026');
-assert.ok(supplier.includes('Conclusão da auditoria de fornecedores'));assert.ok(supplier.includes('Fornecedor avaliado'));
+const supplier=R.renderDocument({...audit,audit_type:'F',report:{conclusion:'Fornecedor avaliado',rqf:'RQF-2027-123'}},[],'report','21/10/2026');
+assert.ok(supplier.includes('6. Conclusão'));assert.ok(supplier.includes('Fornecedor avaliado'));
 const plan=R.renderDocument(audit,[],'plan','21/10/2026');assert.ok(plan.includes('Plano de auditoria'));assert.ok(!plan.includes('Constatação 01'));
 const safe=R.findingCards([{...nc,description:'<script>unsafe</script>'}]);assert.ok(safe.includes('&lt;script&gt;'));
 const removed=R.renderDocument({...audit,plan:{...audit.plan,team:''}},[],'report','21/10/2026');assert.ok(!removed.includes('Equipe prevista'));
@@ -43,3 +43,5 @@ const editable=R.findingCards([{...conform,id:123}],true);
 assert.ok(editable.includes('data-edit-finding="123"'));
 assert.ok(editable.includes('Constatação 01</strong><span> · Conformidade'));
 assert.ok(!R.findingCards([{...conform,id:123}]).includes('data-edit-finding'));
+
+assert.ok(supplier.includes('RQF-2027-123'));assert.ok(supplier.includes('Número do RQF'));assert.ok(!supplier.includes('<dt>Áreas</dt>'));assert.ok(!supplier.includes('<dt>Macroprocessos</dt>'));assert.ok(!internal.includes('Número do RQF'));

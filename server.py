@@ -85,12 +85,22 @@ def seed_requirements(con):
 
 
 def next_code(con, kind, year):
-    con.execute('INSERT INTO counters(kind,year,sequence) VALUES (?,?,1) ON CONFLICT(kind,year) DO UPDATE SET sequence=sequence+1', (kind, int(year)))
-    number = con.execute('SELECT sequence FROM counters WHERE kind=? AND year=?', (kind, int(year))).fetchone()[0]
+    numbers=[]
+    for (payload,) in con.execute('SELECT payload FROM audits'):
+        audit=json.loads(payload)
+        if audit.get('audit_type')==kind and int(audit.get('year',0))==int(year):
+            parts=str(audit.get('code','')).split('-')
+            if len(parts)==4 and parts[2].isdigit():
+                numbers.append(int(parts[2]))
+    number=max(numbers,default=0)+1
+    con.execute('INSERT INTO counters(kind,year,sequence) VALUES (?,?,?) ON CONFLICT(kind,year) DO UPDATE SET sequence=excluded.sequence',(kind,int(year),number))
     return f'AUDI-{kind}-{number:03d}-{int(year)}'
 
 
 def check_area(con, data):
+    if data.get('audit_type')=='F':
+        data.update(area='',area_names=[])
+        return
     names = data.get('area_names', [data.get('area')])
     if not isinstance(names, list) or not names or any(not isinstance(n, str) or not con.execute('SELECT 1 FROM areas WHERE name=?', (n,)).fetchone() for n in names):
         raise ValueError('Selecione uma ou mais áreas cadastradas')
@@ -105,6 +115,9 @@ def process_catalog(con):
 
 
 def check_processes(con,data):
+    if data.get('audit_type')=='F':
+        data.update(macroprocess_ids=[],process_ids=[],macroprocesses='',processes='')
+        return
     macros=data.get('macroprocess_ids',[]);processes=data.get('process_ids',[])
     if not isinstance(macros,list) or not isinstance(processes,list) or not macros or not processes:
         raise ValueError('Selecione pelo menos um macroprocesso e um processo')
@@ -207,7 +220,7 @@ def validate(data, finding=False):
     if finding:
         required = ['audit_id','kind']+([] if data.get('kind')=='Conformidade' else ['description'])
     else:
-        required = ['audit_type','year','month','area','lead','norms','requirements']
+        required = ['audit_type','year','month','lead','norms','requirements']+([] if data.get('audit_type')=='F' else ['area'])
     for key in required:
         if not data.get(key) or isinstance(data[key],str) and not data[key].strip():
             raise ValueError('Preencha o campo: '+key)
@@ -250,6 +263,11 @@ def validate(data, finding=False):
             raise ValueError('Confirme o plano antes de gerar o relatório')
         if data['audit_type']=='I' and isinstance(data.get('report'),dict):
             data['report'].pop('conclusion',None)
+            data['report'].pop('rqf',None)
+        if isinstance(data.get('report'),dict) and 'rqf' in data['report']:
+            if not isinstance(data['report']['rqf'],str):
+                raise ValueError('Informe um número de RQF válido')
+            data['report']['rqf']=data['report']['rqf'].strip()
         if data['audit_type']=='F' and data['status'] == 'Concluída' and not data.get('report', {}).get('conclusion', '').strip():
             raise ValueError('Informe a conclusão do relatório')
 

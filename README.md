@@ -95,4 +95,8 @@ Editar programação está disponível na lista anual, no cartão do calendário
 
 No plano, administradores podem editar todos os campos. O líder tem um formulário apenas de dias/horários, com os demais dados visíveis para consulta. A API também rejeita alterações em normas, requisitos, equipe, local e gestor feitas por usuários comuns. O primeiro plano do líder herda a programação; novas datas exigem confirmar novamente. Planos de relatórios iniciados continuam preservados para rastreabilidade.
 
-Administradores podem usar Excluir programação na lista anual, no calendário ou na auditoria. A confirmação informa que plano, relatório e constatações vinculadas também serão excluídos. A exclusão é atômica no servidor, preserva cadastros e não reinicia a sequência dos códigos. Usuários comuns não veem a opção e recebem bloqueio na API.
+Administradores podem usar Excluir programação na lista anual, no calendário ou na auditoria. A confirmação informa que plano, relatório e constatações vinculadas também serão excluídos. A exclusão é atômica no servidor, preserva os cadastros. A próxima numeração considera o maior código ainda existente do mesmo tipo e ano; sem registros desse tipo/ano, reinicia em 001. Usuários comuns não veem a opção e recebem bloqueio na API.
+
+Auditorias de fornecedores dispensam área, macroprocessos e processos na programação: os campos ficam ocultos e não são exigidos na API. Normas, requisitos, mês e equipe continuam obrigatórios. O relatório de fornecedores inclui Conclusão e Número do RQF, também apresentados no resumo e no PDF. O RQF é uma referência informada ao sistema, sem geração ou tratamento do documento de qualificação.
+
+`python scripts/check_supplier_program.py` testa a programação de fornecedores sem cadastros internos, conclusão/RQF no relatório e PDF, reinício em 001 após exclusão total e sequência sem duplicidade quando existem registros. Códigos já atribuídos a registros existentes não são renumerados.
