@@ -17,7 +17,7 @@ with sync_playwright() as p:
     fixture=page.evaluate('''async()=>{
         await api('areas','POST',{name:'Qualidade'});
         const m=await api('macroprocesses','POST',{name:'Gestão'});
-        const process=await api('processes','POST',{name:'Qualidade',macroprocess_id:m.id});
+        const process=await api('processes','POST',{name:'Qualidade',macroprocess_id:m.id,norms:[...norms]});
         const ana=await api('auditors','POST',{name:'Ana Líder',qualifications:{'ISO 9001:2015':['leader','auditor']}});
         const bruno=await api('auditors','POST',{name:'Bruno Auditor',qualifications:{'ISO 9001:2015':['auditor']}});
         const state=await api('data');
@@ -103,7 +103,9 @@ with sync_playwright() as p:
     assert page.locator('#complete-report').count()==0
     assert page.locator('#app [data-edit-finding]').count()==4  # administrator can correct completed reports
     page.evaluate('window.print=()=>{}')
-    page.get_by_role('button',name='Gerar PDF do relatório',exact=True).click()
+    with page.expect_download() as download:
+        page.get_by_role('button',name='Gerar PDF do relatório',exact=True).click()
+    download.value.save_as(str(root/'report-internal.pdf'))
     print_text=page.locator('#print-document').inner_text()
     assert 'Assinatura do auditor líder' in print_text
     assert 'Descrição da conformidade' not in print_text
@@ -112,9 +114,8 @@ with sync_playwright() as p:
     assert 'Ana Líder' in print_text and 'Bruno Auditor' in print_text
     assert 'Gestão › Qualidade' in print_text
     page.emulate_media(media='print')
-    page.pdf(path=str(root/'report-internal.pdf'),prefer_css_page_size=True,print_background=True)
     page.emulate_media(media='screen')
-    supplier=page.evaluate("async()=>{const result=await api('audits','POST',{...reportFixture,audit_type:'F'});selected={id:result.id,tab:'report'};await load();return result;}")
+    supplier=page.evaluate("async()=>{const result=await api('audits','POST',{...reportFixture,audit_type:'F',supplier_name:'Fornecedor Teste',supplier_cnpj:'12.345.678/0001-95',supplier_address:'Rua de teste, 100',supply_scope:'Fornecimento de componentes'});selected={id:result.id,tab:'report'};await load();return result;}")
     page.get_by_role('button',name='Editar relatório',exact=True).click()
     page.locator('#modal').get_by_role('button',name='Salvar relatório',exact=True).click()
     page.locator('#modal').wait_for(state='hidden')
@@ -123,14 +124,16 @@ with sync_playwright() as p:
     page.get_by_label('Número do RQF',exact=True).fill('RQF-2027-123')
     page.locator('#modal').get_by_role('button',name='Salvar relatório',exact=True).click()
     page.locator('#modal').wait_for(state='hidden')
-    page.get_by_role('button',name='Gerar PDF do relatório',exact=True).click()
+    with page.expect_download() as download:
+        page.get_by_role('button',name='Gerar PDF do relatório',exact=True).click()
+    download.value.save_as(str(root/'report-supplier.pdf'))
     page.emulate_media(media='print')
-    page.pdf(path=str(root/'report-supplier.pdf'),prefer_css_page_size=True,print_background=True)
     page.emulate_media(media='screen')
     page.evaluate('selected.tab="plan";render()')
-    page.get_by_role('button',name='Gerar PDF do plano',exact=True).click()
+    with page.expect_download() as download:
+        page.get_by_role('button',name='Gerar PDF do plano',exact=True).click()
+    download.value.save_as(str(root/'plan.pdf'))
     page.emulate_media(media='print')
-    page.pdf(path=str(root/'plan.pdf'),prefer_css_page_size=True,print_background=True)
     assert not errors,errors
     browser.close()
 
@@ -147,6 +150,10 @@ for name in ['report-internal','report-supplier','plan']:
         for word in page.findall('.//{http://www.w3.org/1999/xhtml}word'):
             assert 15<float(word.get('xMin'))<float(word.get('xMax'))<width-15,(name,word.text)
             assert 15<float(word.get('yMin'))<float(word.get('yMax'))<height-15,(name,word.text)
+    signatures=[(i,word) for i,page in enumerate(pages) for word in page.findall('.//{http://www.w3.org/1999/xhtml}word') if word.text=='Assinatura']
+    assert len(signatures)==1 and signatures[0][0]==len(pages)-1
+    assert float(signatures[0][1].get('yMin'))>750
+    assert 'Data: ____' not in text
     assert 'Administração do sistema' not in text and 'Perfil de teste' not in text
     assert 'Ana Líder' in text and 'Bruno Auditor' in text
     if name=='report-internal':

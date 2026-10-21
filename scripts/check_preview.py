@@ -66,6 +66,8 @@ with sync_playwright() as p:
         for macro,process in [('Produção','Soldagem'),('Gestão','Qualidade')]:
             page.locator('#process-register [name=macroprocess_id]').select_option(label=macro)
             page.locator('#process-register [name=name]').fill(process)
+            page.locator('#process-register').get_by_label('ISO 9001:2015',exact=True).check()
+            page.locator('#process-register').get_by_label('ISO 14001',exact=True).check()
             page.get_by_role('button',name='Salvar processo',exact=True).click()
             page.locator('#process-register .form-message').get_by_text('Cadastro salvo com sucesso.',exact=True).wait_for()
         page.get_by_role('button',name='＋ Programar auditoria').click()
@@ -79,13 +81,13 @@ with sync_playwright() as p:
         page.get_by_label('Qualidade',exact=True).check()
         page.locator('[data-multi=area_names] summary').click()
         page.locator('[data-multi=norms] summary').click()
-        assert page.get_by_label('Secretaria Naval',exact=True).count()==1
-        assert page.get_by_label('Norma personalizada',exact=True).count()==1
-        page.get_by_label('ISO 9001:2015',exact=True).check()
+        assert page.locator('#fields').get_by_label('Secretaria Naval',exact=True).count()==1
+        assert page.locator('#fields').get_by_label('Norma personalizada',exact=True).count()==1
+        page.locator('#fields').get_by_label('ISO 9001:2015',exact=True).check()
         assert page.locator('[name=lead_id][type=radio]').count()==1
         assert page.locator('[name=requirement_ids]').count()>20
         assert page.evaluate("[...document.querySelectorAll('[name=requirement_ids]')].every(x=>/ · \\d+\\.\\d+ — /.test(x.closest('label').textContent))")
-        page.get_by_label('ISO 14001',exact=True).check()
+        page.locator('#fields').get_by_label('ISO 14001',exact=True).check()
         assert page.locator('[name=requirement_ids]').count()>40
         page.locator('[data-multi=norms] summary').click()
         page.locator('[data-multi=macroprocess_ids] summary').click()

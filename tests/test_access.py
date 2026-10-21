@@ -27,7 +27,7 @@ class AccessWorkflow(unittest.TestCase):
             self.auditors.append(self.call(self.admin,'auditors',dict(name=name,qualifications={'ISO 9001:2015':['leader','auditor']})))
         self.call(self.admin,'areas',{'name':'Qualidade'})
         self.macro=self.call(self.admin,'macroprocesses',dict(name='Gestão'))
-        self.process=self.call(self.admin,'processes',dict(name='Qualidade',macroprocess_id=self.macro['id']))
+        self.process=self.call(self.admin,'processes',dict(name='Qualidade',macroprocess_id=self.macro['id'],norms=list(server.NORMS)))
         self.req=self.call(self.admin,'requirements',dict(norm='ISO 9001:2015',code='8.4',title='Fornecimento externo'))
         self.own=self.make_audit(0)
         self.other=self.make_audit(1)
@@ -123,7 +123,7 @@ class AccessWorkflow(unittest.TestCase):
         self.assertEqual(following['code'],'AUDI-I-002-2027')
 
     def test_supplier_program_without_internal_fields_and_rqf(self):
-        body=dict(self.own,audit_type='F',year=2031)
+        body=dict(self.own,audit_type='F',year=2031,supplier_name='Fornecedor Teste',supplier_cnpj='12.345.678/0001-95',supplier_address='Rua Teste, 100',supply_scope='Componentes')
         for key in ['area','area_names','macroprocess_ids','process_ids','macroprocesses','processes','id','code']:
             body.pop(key,None)
         created=self.call(self.admin,'audits',body)
@@ -142,6 +142,41 @@ class AccessWorkflow(unittest.TestCase):
         saved=next(a for a in self.call(self.admin,'data')['audits'] if a['id']==created['id'])
         self.assertEqual(saved['report']['rqf'],'RQF-2031-001')
         self.assertEqual(saved['report']['conclusion'],'Fornecedor qualificado')
+
+    def test_process_norms_multiple_selection_and_history(self):
+        body=dict(name='Processo qualificado',macroprocess_id=self.macro['id'],norms=['ISO 45001'])
+        for ns in [[],['Norma inexistente'],['ISO 45001','ISO 45001']]:
+            self.fails(400,self.admin,'processes',dict(body,norms=ns))
+        pid=self.call(self.admin,'processes',body)['id']
+        self.fails(403,self.regular,'processes/'+str(pid),body,'PUT')
+        process=next(p for p in self.call(self.admin,'data')['processes'] if p['id']==pid)
+        self.assertEqual(process['norms'],['ISO 45001'])
+        self.assertEqual(process['history'][0]['action'],'Cadastro')
+        self.fails(400,self.admin,'audits',dict(self.own,process_ids=[pid]))
+        self.call(self.admin,'processes/'+str(pid),dict(body,norms=['ISO 45001','ISO 9001:2015']),'PUT')
+        process=next(p for p in self.call(self.admin,'data')['processes'] if p['id']==pid)
+        self.assertEqual(len(process['history']),2)
+        self.assertEqual(process['history'][1]['before']['norms'],['ISO 45001'])
+        self.assertEqual(process['history'][1]['by'],'Administrador')
+        self.call(self.admin,'audits',dict(self.own,process_ids=[pid]))
+
+    def test_process_mandatory_requirements_enforced_in_program_and_plan(self):
+        other=self.call(self.admin,'requirements',dict(norm='ISO 9001:2015',code='6.1',title='Riscos'))
+        foreign=self.call(self.admin,'requirements',dict(norm='ISO 45001',code='4.1',title='Contexto'))
+        body=dict(name='Processo obrigatório',macroprocess_id=self.macro['id'],norms=['ISO 9001:2015'],mandatory_requirement_ids=[other['id']])
+        for ids in [[foreign['id']],[999999],[other['id'],other['id']],'6.1']:
+            self.fails(400,self.admin,'processes',dict(body,mandatory_requirement_ids=ids))
+        pid=self.call(self.admin,'processes',body)['id']
+        audit=dict(self.own,process_ids=[pid])
+        self.fails(400,self.admin,'audits',audit)
+        audit['requirement_ids']=[self.req['id'],other['id']]
+        created=self.call(self.admin,'audits',audit)
+        audit=next(a for a in self.call(self.admin,'data')['audits'] if a['id']==created['id'])
+        plan={key:copy.deepcopy(audit[key]) for key in ['lead_id','lead','team_ids','team','norms','requirement_ids','requirements']}
+        plan.update(date='2027-03-10',confirmed=False,requirement_ids=[self.req['id']])
+        self.fails(400,self.admin,'audits/'+str(audit['id']),dict(audit,plan=plan,status='Plano em rascunho'),'PUT')
+        plan['requirement_ids'].append(other['id'])
+        self.call(self.admin,'audits/'+str(audit['id']),dict(audit,plan=plan,status='Plano em rascunho'),'PUT')
 
     def test_administrator_can_edit_auditors_preserving_links(self):
         aid=self.auditors[0]['id'];path='auditors/'+str(aid)

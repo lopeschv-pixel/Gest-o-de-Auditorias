@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory() as directory:
             result=page.evaluate('''async()=>{
                 await api('areas','POST',{name:'Compras'});
                 const macro=await api('macroprocesses','POST',{name:'Gestão'});
-                const process=await api('processes','POST',{name:'Compras',macroprocess_id:macro.id});
+                const process=await api('processes','POST',{name:'Compras',macroprocess_id:macro.id,norms:[...norms]});
                 const auditor=await api('auditors','POST',{name:'Ana',qualifications:{'ISO 9001:2015':['leader','auditor']}});
                 const state=await api('data');
                 const r=state.requirements.find(r=>r.norm==='ISO 9001:2015'&&r.code==='8.4');

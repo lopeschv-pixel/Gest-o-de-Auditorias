@@ -4,6 +4,7 @@ import sqlite3
 import access
 import hashlib
 import secrets
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -26,6 +27,10 @@ def connection():
     con.execute('CREATE TABLE IF NOT EXISTS requirements (id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
     con.execute('CREATE TABLE IF NOT EXISTS macroprocesses (id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE)')
     con.execute('CREATE TABLE IF NOT EXISTS processes (id INTEGER PRIMARY KEY,macroprocess_id INTEGER NOT NULL REFERENCES macroprocesses(id),name TEXT NOT NULL,UNIQUE(macroprocess_id,name))')
+    columns={row[1] for row in con.execute('PRAGMA table_info(processes)')}
+    for column in ['norms','history','mandatory_requirement_ids']:
+        if column not in columns:
+            con.execute(f"ALTER TABLE processes ADD COLUMN {column} TEXT NOT NULL DEFAULT '[]'")
     access.schema(con)
     con.execute('CREATE TABLE IF NOT EXISTS norms (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)')
     for name in NORMS:
@@ -84,6 +89,20 @@ def seed_requirements(con):
     return added
 
 
+SUPPLIER_KEYS=['supplier_name','supplier_cnpj','supplier_address','supply_scope']
+
+def check_supplier(data,required=False):
+    if data.get('audit_type')!='F':
+        return
+    for key in SUPPLIER_KEYS:
+        if key in data and not isinstance(data[key],str):
+            raise ValueError('Preencha os dados do fornecedor')
+        if key in data:
+            data[key]=data[key].strip()
+        if required and not data.get(key):
+            raise ValueError('Preencha nome, CNPJ, endereço e escopo de fornecimento')
+
+
 def next_code(con, kind, year):
     numbers=[]
     for (payload,) in con.execute('SELECT payload FROM audits'):
@@ -111,7 +130,34 @@ def check_area(con, data):
 
 
 def process_catalog(con):
-    return dict(macroprocesses=[dict(id=i,name=n) for i,n in con.execute('SELECT id,name FROM macroprocesses ORDER BY name')],processes=[dict(id=i,macroprocess_id=m,name=n) for i,m,n in con.execute('SELECT id,macroprocess_id,name FROM processes ORDER BY name')])
+    return dict(macroprocesses=[dict(id=i,name=n) for i,n in con.execute('SELECT id,name FROM macroprocesses ORDER BY name')],processes=[dict(id=i,macroprocess_id=m,name=n,norms=json.loads(ns),history=json.loads(h),mandatory_requirement_ids=json.loads(req)) for i,m,n,ns,h,req in con.execute('SELECT id,macroprocess_id,name,norms,history,mandatory_requirement_ids FROM processes ORDER BY name')])
+
+
+def validate_process_norms(data,con=None):
+    ns=data.get('norms')
+    names=[n for (n,) in con.execute('SELECT name FROM norms')] if con else norm_names()
+    if not isinstance(ns,list) or not ns or any(not isinstance(n,str) or n not in names for n in ns) or len(set(ns))!=len(ns):
+        raise ValueError('Selecione uma ou mais normas cadastradas para o processo')
+    return ns
+
+
+def validate_mandatory(con,data,ns):
+    ids=data.get('mandatory_requirement_ids',[])
+    requirements=catalog(con,'requirements')
+    if not isinstance(ids,list) or any(not isinstance(i,int) for i in ids) or len(set(ids))!=len(ids) or any(not any(r['id']==i and r['norm'] in ns for r in requirements) for i in ids):
+        raise ValueError('Selecione requisitos obrigatórios das normas do processo')
+    return ids
+
+
+def check_mandatory(con,audit,selection):
+    required={rid for p in process_catalog(con)['processes'] if p['id'] in audit.get('process_ids',[]) for rid in p['mandatory_requirement_ids']}
+    required={r['id'] for r in catalog(con,'requirements') if r['id'] in required and r['norm'] in selection.get('norms',[])}
+    if required-set(selection.get('requirement_ids',[])):
+        raise ValueError('Inclua os requisitos obrigatórios dos processos selecionados')
+
+
+def process_event(user,before,after):
+    return dict(at=datetime.now(timezone.utc).isoformat(),by=user['full_name'],action='Cadastro' if before is None else 'Alteração',before=before,after=after)
 
 
 def check_processes(con,data):
@@ -128,6 +174,9 @@ def check_processes(con,data):
         raise ValueError('Selecione processos vinculados aos macroprocessos escolhidos')
     if any(not any(p['id'] in processes and p['macroprocess_id']==mid for p in catalog['processes']) for mid in macros):
         raise ValueError('Selecione um processo por macroprocesso')
+    if any(p['id'] in processes and p['norms'] and not set(p['norms']).intersection(data.get('norms',[])) for p in catalog['processes']):
+        raise ValueError('Selecione processos aplicáveis às normas da auditoria')
+    check_mandatory(con,data,data)
     data['macroprocesses']=' · '.join(next(m['name'] for m in catalog['macroprocesses'] if m['id']==mid) for mid in macros)
     data['processes']='\n'.join(next(m['name'] for m in catalog['macroprocesses'] if m['id']==p['macroprocess_id'])+' › '+p['name'] for pid in processes for p in catalog['processes'] if p['id']==pid)
 
@@ -410,9 +459,29 @@ class Handler(SimpleHTTPRequestHandler):
                             raise ValueError('Selecione um macroprocesso cadastrado')
                         if any(n.casefold()==name.casefold() for (n,) in con.execute('SELECT name FROM processes WHERE macroprocess_id=?',(mid,))):
                             raise ValueError('Processo já cadastrado neste macroprocesso')
-                        rid=con.execute('INSERT INTO processes(macroprocess_id,name) VALUES (?,?)',(mid,name)).lastrowid
-                        result=dict(id=rid,name=name,macroprocess_id=mid)
+                        ns=validate_process_norms(data,con)
+                        after=dict(name=name,macroprocess_id=mid,norms=ns,mandatory_requirement_ids=validate_mandatory(con,data,ns))
+                        history=[process_event(user,None,after)]
+                        rid=con.execute('INSERT INTO processes(macroprocess_id,name,norms,history,mandatory_requirement_ids) VALUES (?,?,?,?,?)',(mid,name,json.dumps(ns),json.dumps(history),json.dumps(after['mandatory_requirement_ids']))).lastrowid
+                        result=dict(id=rid,**after,history=history)
                 return self.send_json(result,201)
+            if self.path.startswith('/api/processes/') and self.command=='PUT':
+                pid=int(self.path.split('/')[-1]);name=str(data.get('name','')).strip();mid=int(data.get('macroprocess_id') or 0);ns=validate_process_norms(data)
+                if not name or len(name)>150:
+                    raise ValueError('Informe um nome de até 150 caracteres')
+                with connection() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    old=next((p for p in process_catalog(con)['processes'] if p['id']==pid),None)
+                    if not old:
+                        return self.send_json({'error':'Processo não encontrado'},404)
+                    if not con.execute('SELECT 1 FROM macroprocesses WHERE id=?',(mid,)).fetchone():
+                        raise ValueError('Selecione um macroprocesso cadastrado')
+                    if any(p['id']!=pid and p['macroprocess_id']==mid and p['name'].casefold()==name.casefold() for p in process_catalog(con)['processes']):
+                        raise ValueError('Processo já cadastrado neste macroprocesso')
+                    before={k:old[k] for k in ['name','macroprocess_id','norms','mandatory_requirement_ids']};after=dict(name=name,macroprocess_id=mid,norms=ns,mandatory_requirement_ids=validate_mandatory(con,data,ns))
+                    history=old['history']+([process_event(user,before,after)] if before!=after else [])
+                    con.execute('UPDATE processes SET name=?,macroprocess_id=?,norms=?,history=?,mandatory_requirement_ids=? WHERE id=?',(name,mid,json.dumps(ns),json.dumps(history),json.dumps(after['mandatory_requirement_ids']),pid))
+                return self.send_json({'ok':True})
             if self.path.startswith('/api/requirements/') and self.command == 'PUT':
                 title = str(data.get('title','')).strip()
                 if not title:
@@ -516,6 +585,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({'id': row}, 200 if finding_id is not None else 201)
             if self.path == '/api/audits' and self.command == 'POST':
                 validate(data)
+                check_supplier(data,required=True)
                 if data.get('status')=='Concluída':
                     raise ValueError('Registre e classifique os requisitos antes de concluir o relatório')
                 with connection() as con:
@@ -525,6 +595,7 @@ class Handler(SimpleHTTPRequestHandler):
                     check_selections(con, data, required=True)
                     if data.get('plan'):
                         check_selections(con, data['plan'], required=True)
+                        check_mandatory(con,data,data['plan'])
                     data['code'] = next_code(con, data['audit_type'], data['year'])
                     data.pop('title', None)
                     row = con.execute('INSERT INTO audits(payload) VALUES (?)', (json.dumps(data),)).lastrowid
@@ -537,17 +608,19 @@ class Handler(SimpleHTTPRequestHandler):
                     if old:
                         previous = json.loads(old[0])
                         access.check_update(user,previous,data)
+                        check_supplier(data,required=any(previous.get(k)!=data.get(k) for k in SUPPLIER_KEYS))
                         if data['audit_type'] != previous['audit_type'] or int(data['year']) != int(previous['year']):
                             raise ValueError('Tipo e ano não podem mudar após a geração do código')
                         data['code'] = previous['code']
                         data.pop('title', None)
                         check_area(con, data)
-                        if previous.get('macroprocess_ids')!=data.get('macroprocess_ids') or previous.get('process_ids')!=data.get('process_ids'):
+                        if previous.get('macroprocess_ids')!=data.get('macroprocess_ids') or previous.get('process_ids')!=data.get('process_ids') or previous.get('norms')!=data.get('norms') or previous.get('requirement_ids')!=data.get('requirement_ids'):
                             check_processes(con,data)
                         if any(previous.get(k) != data.get(k) for k in ['norms','lead_id','team_ids','observer_ids','requirement_ids','lead','team','requirements']):
                             check_selections(con, data, required=True)
                         if data.get('plan') and previous.get('plan') != data['plan']:
                             check_selections(con, data['plan'], required=True)
+                            check_mandatory(con,data,data['plan'])
                         has_findings = con.execute('SELECT 1 FROM findings WHERE audit_id=?', (int(self.path.split('/')[-1]),)).fetchone()
                         if (previous.get('report') or has_findings) and previous.get('plan') != data.get('plan'):
                             raise ValueError('O relatório já foi iniciado; preserve o plano confirmado')

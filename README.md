@@ -21,7 +21,7 @@ Porta padrão 8000 (`PORT` para alterar). SQLite em `data/nuclaud.db` (`NUCLAUD_
 - Na programação, selecione tipo, ano, uma ou mais áreas, uma ou mais normas, mês, líder, equipe, observadores e requisitos cadastrados. Não há título nem cadastro de áreas dentro da programação. Códigos automáticos: AUDI-I-001-2027 / AUDI-F-001-2027, com sequência por tipo e ano. Tipo e ano ficam preservados após gerar o código.
 - O líder precisa ter habilitação de líder em todas as normas; membros/observadores precisam da respectiva função em pelo menos uma norma. Uma pessoa não ocupa duas funções na mesma auditoria. Pelo menos um requisito por norma deve ser selecionado.
 - Pelo calendário, gere o plano. Ele aproveita a programação, permite alterar a equipe e os requisitos, adicionar vários dias/períodos com horário de início/fim por dia, objetivo/escopo, local e e-mail do gestor. É possível ter períodos separados no mesmo dia; sobreposição e fim anterior ao início são bloqueados.
-- Confirmar o plano habilita PDF e preparação de e-mail. O PDF usa a impressão do navegador. O e-mail abre no aplicativo configurado, já preenchido; envio é manual, assim como anexar PDF.
+- Confirmar o plano habilita PDF e preparação de e-mail. O PDF é gerado e baixado diretamente. Preparar e-mail baixa um rascunho .eml com o plano PDF anexado, para abrir em um aplicativo compatível e enviar manualmente.
 - Gerar relatório fica dentro da auditoria, acessada pelo calendário. Não há menu lateral de relatório. Registre participantes e constatações classificadas como conformidade, não conformidade, observação ou oportunidade de melhoria. Conclusão é exclusiva de auditorias de fornecedores. Os nomes da equipe vêm do plano de auditoria. Não conformidades exigem o número do PAC; tratamento em sistema externo.
 
 ## Planejamento e ranqueamento
@@ -75,13 +75,13 @@ Não existe backend no Pages. O administrador da demonstração é um perfil fic
 
 `node tests/test_access_policy.cjs` testa a política da demonstração. `python scripts/check_preview.py` testa Administração, cadastro de usuário, títulos e alternância de perfis. `python scripts/check_server_access.py` testa no navegador o servidor real: primeiro administrador, login, logout e plano/relatório com perfil Usuário.
 
-Na Administração, cadastre macroprocessos e seus processos vinculados. A programação exige selecionar um ou mais macroprocessos e pelo menos um processo de cada macroprocesso escolhido. O plano e o relatório apresentam essas informações. Registros antigos são preservados; ao editar a programação, complete os novos campos.
+Na Administração, cadastre macroprocessos e seus processos vinculados. A programação interna exige selecionar um ou mais macroprocessos e pelo menos um processo de cada macroprocesso escolhido. O plano e o relatório apresentam essas informações. Registros antigos são preservados; ao editar a programação, complete os novos campos.
 
 `node tests/test_reporting.cjs` valida as classificações e a composição dos documentos. `python scripts/check_reports_pdf.py` verifica os formulários no navegador e gera PDFs A4 de plano, relatório interno longo e relatório de fornecedor, conferindo conteúdo e margens.
 
 A programação e o plano oferecem requisitos de dois níveis (ex.: 4.1), ordenados numericamente por norma. O auditor líder é escolhido por marcação única. Seletores múltiplos fecham ao clicar fora ou em Concluir seleção. O plano inclui nome/e-mail do gestor; objetivo e escopo aparecem apenas para fornecedores.
 
-Conformidades registram requisitos e evidência encontrada, sem descrição adicional. O botão Concluir relatório exige que todos os IDs de requisitos do plano tenham uma conformidade ou não conformidade; observações e oportunidades não substituem essa classificação. O servidor aplica a mesma regra. O PDF inclui espaço para assinatura do auditor líder e data.
+Conformidades registram requisitos e evidência encontrada, sem descrição adicional. O botão Concluir relatório exige que todos os IDs de requisitos do plano tenham uma conformidade ou não conformidade; observações e oportunidades não substituem essa classificação. O servidor aplica a mesma regra. O PDF inclui uma linha com o texto Assinatura do auditor líder no final da última página, sem campo de data.
 
 Preparar e-mail baixa um rascunho `.eml` com destinatário, mensagem e plano PDF anexado, gerado localmente com jsPDF 4.2.1 (MIT, licença preservada em static/vendor). Abra o arquivo em um aplicativo de e-mail compatível para revisar e enviar; a abertura automática de rascunhos depende do aplicativo/sistema operacional. Não envia e-mails pelo servidor nem usa mailto para anexos.
 
@@ -100,3 +100,9 @@ Administradores podem usar Excluir programação na lista anual, no calendário 
 Auditorias de fornecedores dispensam área, macroprocessos e processos na programação: os campos ficam ocultos e não são exigidos na API. Normas, requisitos, mês e equipe continuam obrigatórios. O relatório de fornecedores inclui Conclusão e Número do RQF, também apresentados no resumo e no PDF. O RQF é uma referência informada ao sistema, sem geração ou tratamento do documento de qualificação.
 
 `python scripts/check_supplier_program.py` testa a programação de fornecedores sem cadastros internos, conclusão/RQF no relatório e PDF, reinício em 001 após exclusão total e sequência sem duplicidade quando existem registros. Códigos já atribuídos a registros existentes não são renumerados.
+
+Na programação de fornecedores, os primeiros dados após o tipo são nome do fornecedor, CNPJ, endereço e escopo de fornecimento. Os quatro campos são obrigatórios para novos cadastros e no formulário de edição. Registros anteriores continuam acessíveis; os campos podem ser preenchidos ao editar a programação. Os dados seguem para resumo, plano, relatório e PDFs. O plano de fornecedores não apresenta macroprocessos ou processos, inclusive no formulário.
+
+Cada processo tem uma ou mais normas aplicáveis. Abaixo de cada norma marcada, selecione seus requisitos obrigatórios. A programação filtra os processos pelas normas selecionadas e inclui automaticamente os requisitos obrigatórios correspondentes, que não podem ser desmarcados; a API exige a mesma cobertura na programação e no plano. Processos antigos sem normas permanecem compatíveis até que o cadastro seja atualizado. Editar processo mantém o ID e registra o histórico de criação/alterações com responsável e horário.
+
+`python scripts/check_process_requirements.py` testa seleção por norma, requisitos obrigatórios, edição e inclusão automática na programação. `python scripts/check_reports_pdf.py` testa os PDFs baixados, inclusive relatórios longos, conteúdo completo e assinatura única próxima ao rodapé da última página, sem data. O PDF anexado ao e-mail usa o mesmo gerador.

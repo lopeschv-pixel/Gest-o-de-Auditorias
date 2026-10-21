@@ -40,3 +40,7 @@ button:disabled{opacity:.4;cursor:not-allowed}.calendar-item{border-top:1px soli
 .calendar-filter{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}.calendar-filter label{font-weight:600;font-size:12px}
 
 .internal-program-fields{display:contents}
+
+.supplier-fields{display:contents}@media print{.audit-document{min-height:265mm;display:flex;flex-direction:column}.doc-section,.doc-header,.doc-footer{flex-shrink:0}.doc-signature{margin-top:auto;padding-top:15mm;flex-shrink:0}}
+
+.process-norm-group{width:100%}.process-required{padding:10px 12px;margin:6px 0 12px 20px;border-left:2px solid #a3b9ac}.process-required summary{cursor:pointer;font-size:12px}.process-required .requirement-options{width:100%}

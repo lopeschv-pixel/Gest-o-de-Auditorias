@@ -11,7 +11,7 @@ with sync_playwright() as p:
     page.evaluate('''async()=>{
       await api('areas','POST',{name:'Qualidade'});
       const m=await api('macroprocesses','POST',{name:'Gestão'});
-      const process=await api('processes','POST',{name:'Qualidade',macroprocess_id:m.id});
+      const process=await api('processes','POST',{name:'Qualidade',macroprocess_id:m.id,norms:[...norms]});
       const leader=await api('auditors','POST',{name:'Ana',qualifications:Object.fromEntries(norms.map(n=>[n,['leader','auditor']]))});
       const groups=[['ISO 9001:2015'],['ANSN 1.16','Secretaria Naval'],['ISO 14001','ISO 45001'],['ASME III'],['ISO 9001:2015']];
       window.calendarFixtures=[];
