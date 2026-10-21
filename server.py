@@ -13,6 +13,7 @@ ROOT = Path(__file__).parent
 DB = Path(os.environ.get('NUCLAUD_DB', ROOT / 'data' / 'nuclaud.db'))
 PRELOAD_REQUIREMENTS = True
 CATALOG_PATH = ROOT / 'static' / 'requirements-catalog.json'
+QUALIFICATIONS={'not_qualified','one_year','three_years'}
 NORMS = ['ISO 9001:2015', 'ANSN 1.16', 'ISO 14001', 'ISO 45001', 'ASME III', 'Secretaria Naval']
 
 def connection():
@@ -313,12 +314,21 @@ def validate(data, finding=False):
         if data['audit_type']=='I' and isinstance(data.get('report'),dict):
             data['report'].pop('conclusion',None)
             data['report'].pop('rqf',None)
+            data['report'].pop('qualification_result',None)
         if isinstance(data.get('report'),dict) and 'rqf' in data['report']:
             if not isinstance(data['report']['rqf'],str):
                 raise ValueError('Informe um número de RQF válido')
             data['report']['rqf']=data['report']['rqf'].strip()
-        if data['audit_type']=='F' and data['status'] == 'Concluída' and not data.get('report', {}).get('conclusion', '').strip():
-            raise ValueError('Informe a conclusão do relatório')
+        if data['audit_type']=='F' and data['status']=='Concluída' and not isinstance(data.get('report'),dict):
+            raise ValueError('Selecione o resultado da qualificação do fornecedor')
+        if data['audit_type']=='F' and isinstance(data.get('report'),dict):
+            result=data['report'].get('qualification_result','')
+            if not isinstance(result,str) or result and result not in QUALIFICATIONS:
+                raise ValueError('Resultado da qualificação inválido')
+            if 'conclusion' in data['report'] and not isinstance(data['report']['conclusion'],str):
+                raise ValueError('Informe observações da conclusão válidas')
+            if data['status']=='Concluída' and result not in QUALIFICATIONS:
+                raise ValueError('Selecione o resultado da qualificação do fornecedor')
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):

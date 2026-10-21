@@ -54,10 +54,16 @@ with sync_playwright() as p:
         assert required.is_checked()
         required.click()
         assert required.is_checked()
+    extra=page.evaluate("data.requirements.find(r=>r.norm==='ISO 9001:2015'&&r.code==='4.2').id")
+    extra_box=page.locator(f'[name=requirement_ids][value="{extra}"]')
+    extra_box.check()
+    extra_box.uncheck()
+    assert not extra_box.is_checked()
+    extra_box.check()
     page.locator('[name=lead_id]').check()
     page.get_by_role('button',name='Salvar programação',exact=True).click()
     page.locator('#modal').wait_for(state='hidden')
-    assert set(page.evaluate('data.audits[0].requirement_ids'))==set(ids.values())
+    assert set(page.evaluate('data.audits[0].requirement_ids'))==set(ids.values())|{extra}
     page.get_by_role('button',name='Gerar plano',exact=True).click()
     for rid in ids.values():
         checkbox=page.locator(f'[name=requirement_ids][value="{rid}"]')

@@ -42,7 +42,8 @@ with sync_playwright() as p:
     page.get_by_role('button',name='◫ Calendário',exact=True).click()
     page.get_by_role('button',name='Gerar relatório',exact=True).click()
     page.get_by_role('button',name='Editar relatório',exact=True).click()
-    page.get_by_label('Conclusão',exact=True).fill('Fornecedor qualificado')
+    page.get_by_label('Qualificado por um ano',exact=True).check()
+    page.get_by_label('Observações da conclusão',exact=True).fill('Fornecedor qualificado')
     page.get_by_label('Número do RQF',exact=True).fill('RQF-2027-456')
     page.locator('#modal').get_by_role('button',name='Salvar relatório',exact=True).click()
     page.locator('#modal').wait_for(state='hidden')
@@ -53,6 +54,13 @@ with sync_playwright() as p:
     download.value.save_as('/tmp/nuclaud-preview/supplier-download.pdf')
     assert 'RQF-2027-456' in page.locator('#print-document').inner_text()
     assert 'Fornecedor qualificado' in page.locator('#print-document').inner_text()
+    assert 'Qualificado por um ano' in page.locator('#print-document').inner_text()
+    page.get_by_role('button',name='Editar relatório',exact=True).click()
+    assert page.locator('[name=qualification_result]:checked').input_value()=='one_year'
+    assert page.locator('[name=qualification_result]').count()==3
+    page.get_by_label('Não qualificado',exact=True).check()
+    assert page.locator('[name=qualification_result]:checked').count()==1
+    page.get_by_role('button',name='Cancelar',exact=True).click()
     assert not page.locator('#print-document dt').filter(has_text='Macroprocessos').count()
     # Delete the sole record, then repeatedly create/delete. Old counters must not affect allocation.
     result=page.evaluate('''async()=>{

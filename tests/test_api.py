@@ -242,7 +242,7 @@ class Workflow(unittest.TestCase):
         self.request('/api/findings',dict(audit_id=supplier['id'],kind='Conformidade',requirement_ids=[1],evidence='Registro analisado'))
         with self.assertRaises(urllib.error.HTTPError):
             self.request('/api/audits/'+str(supplier['id']),dict(supplier,status='Concluída',report={'participants':'Equipe'}),'PUT')
-        self.request('/api/audits/'+str(supplier['id']),dict(supplier,status='Concluída',report={'participants':'Equipe','conclusion':'Fornecedor avaliado'}),'PUT')
+        self.request('/api/audits/'+str(supplier['id']),dict(supplier,status='Concluída',report={'participants':'Equipe','conclusion':'Fornecedor avaliado','qualification_result':'three_years'}),'PUT')
 
     def test_macroprocess_and_process_registration_and_required_links(self):
         first=self.request('/api/macroprocesses',{'name':'Operações'})

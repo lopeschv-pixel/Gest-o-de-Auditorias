@@ -137,11 +137,16 @@ class AccessWorkflow(unittest.TestCase):
         self.call(self.admin,'audits/'+str(supplier['id']),supplier,'PUT')
         supplier=next(a for a in self.call(self.admin,'data')['audits'] if a['id']==created['id'])
         self.call(self.regular,'findings',dict(audit_id=supplier['id'],kind='Conformidade',requirement_ids=[self.req['id']],evidence='Fornecimento verificado'))
-        supplier.update(status='Concluída',report=dict(conclusion='Fornecedor qualificado',rqf=' RQF-2031-001 '))
+        supplier.update(status='Concluída',report=dict(conclusion='Fornecedor qualificado',qualification_result='one_year',rqf=' RQF-2031-001 '))
         self.call(self.regular,'audits/'+str(supplier['id']),supplier,'PUT')
         saved=next(a for a in self.call(self.admin,'data')['audits'] if a['id']==created['id'])
         self.assertEqual(saved['report']['rqf'],'RQF-2031-001')
         self.assertEqual(saved['report']['conclusion'],'Fornecedor qualificado')
+        self.assertEqual(saved['report']['qualification_result'],'one_year')
+        for result in ['not_qualified','one_year','three_years']:
+            self.call(self.admin,'audits/'+str(supplier['id']),dict(supplier,report=dict(qualification_result=result,conclusion='',rqf='RQF-2031-001')),'PUT')
+        for invalid in ['',None,'qualified','five_years',[]]:
+            self.fails(400,self.admin,'audits/'+str(supplier['id']),dict(supplier,report=dict(qualification_result=invalid,conclusion='Observações')),'PUT')
 
     def test_process_norms_multiple_selection_and_history(self):
         body=dict(name='Processo qualificado',macroprocess_id=self.macro['id'],norms=['ISO 45001'])
