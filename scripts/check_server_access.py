@@ -39,6 +39,26 @@ with tempfile.TemporaryDirectory() as directory:
                 return await api('users','POST',{username:'ana.rede',full_name:'Ana da Rede',email:'ana@example.com',role:'user',auditor_id:auditor.id});
             }''')
             password=result['temporary_password']
+            page.evaluate('load()')
+            page.get_by_role('button',name='♙ Cadastrar auditores',exact=True).click()
+            page.get_by_role('button',name='Editar auditor',exact=True).click()
+            assert page.locator('[name=name]').input_value()=='Ana'
+            page.locator('[name=name]').fill('Ana corrigida')
+            page.locator('fieldset').filter(has=page.get_by_text('ISO 9001:2015',exact=True)).get_by_label('Observador',exact=True).check()
+            page.get_by_role('button',name='Salvar auditor',exact=True).click()
+            page.locator('#app').get_by_text('Ana corrigida',exact=True).wait_for()
+            assert page.locator('[data-edit-auditor]').count()==1
+            page.get_by_role('button',name='◫ Calendário',exact=True).click()
+            page.get_by_role('button',name='Editar programação',exact=True).click()
+            page.locator('[name=month]').select_option('4')
+            page.get_by_role('button',name='Salvar programação',exact=True).click()
+            page.get_by_role('button',name='Editar programação',exact=True).wait_for()
+            page.wait_for_function("String(data.audits[0].month)==='4'")
+            assert page.evaluate('data.audits[0].lead')=='Ana corrigida'
+            page.get_by_role('button',name='Editar programação',exact=True).click()
+            assert page.locator('[name=month]').input_value()=='4'
+            page.get_by_role('button',name='Cancelar',exact=True).click()
+
             page.get_by_role('button',name='Sair',exact=True).click()
             page.locator('[name=username]').fill('ana.rede')
             page.locator('[name=password]').fill(password)
@@ -47,7 +67,9 @@ with tempfile.TemporaryDirectory() as directory:
             assert not page.locator('#admin-menu').is_visible()
             assert not page.locator('#new-audit').is_visible()
             page.get_by_role('button',name='Gerar plano',exact=True).click()
-            assert page.locator('[name=lead_id][type=radio]').count()==1
+            assert page.locator('[name=lead_id]').count()==0
+            assert page.locator('[name=norms]').count()==0
+            assert 'apenas os dias e horários' in page.locator('#fields').inner_text()
             page.locator('[name=period_date]').fill('2027-03-10')
             page.locator('[name=period_start]').fill('08:00')
             page.locator('[name=period_end]').fill('12:00')

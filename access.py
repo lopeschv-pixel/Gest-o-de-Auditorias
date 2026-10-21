@@ -105,6 +105,12 @@ def check_update(user, previous, updated):
         raise PermissionError('Somente administradores podem alterar um relatório concluído')
     if not can_manage(user, previous):
         raise PermissionError('Você só pode gerar planos e relatórios das auditorias em que é líder')
+    old_plan=previous.get('plan') or previous
+    new_plan=updated.get('plan')
+    if isinstance(new_plan,dict):
+        keys=set(old_plan)|set(new_plan) if previous.get('plan') else set(new_plan)
+        if any(old_plan.get(key)!=new_plan.get(key) for key in keys if key not in {'date','periods','confirmed'}):
+            raise PermissionError('O auditor líder só pode alterar os dias e horários do plano')
     allowed = {'plan', 'report', 'status', 'id'}
     if any(previous.get(key) != updated.get(key) for key in set(previous) | set(updated) if key not in allowed):
         raise PermissionError('Somente administradores podem alterar a programação')

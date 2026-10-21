@@ -61,6 +61,7 @@ class AccessWorkflow(unittest.TestCase):
         plan.update(date='2027-03-10',confirmed=True)
         self.own.update(plan=plan,status='Planejada')
         self.call(self.regular,'audits/'+str(self.own['id']),self.own,'PUT')
+        self.own=self.call(self.regular,'data')['audits'][0]
         body=dict(audit_id=self.own['id'],kind='Conformidade',requirement_ids=[self.req['id']],evidence='Evidência original')
         fid=self.call(self.regular,'findings',body)['id']
         path='findings/'+str(fid)
@@ -99,6 +100,20 @@ class AccessWorkflow(unittest.TestCase):
         self.call(self.regular,'findings/'+str(draft_id),{},'DELETE')
         self.assertEqual(len(self.call(self.regular,'data')['findings']),0)
 
+    def test_administrator_can_edit_auditors_preserving_links(self):
+        aid=self.auditors[0]['id'];path='auditors/'+str(aid)
+        body=dict(name='Ana corrigida',qualifications={'ISO 9001:2015':['leader','auditor','observer'],'ISO 45001':['auditor']})
+        self.fails(403,self.regular,path,body,'PUT')
+        self.call(self.admin,path,body,'PUT')
+        state=self.call(self.admin,'data');person=next(a for a in state['auditors'] if a['id']==aid)
+        self.assertEqual(person['name'],'Ana corrigida')
+        self.assertIn('observer',person['qualifications']['ISO 9001:2015'])
+        self.assertEqual(next(u for u in state['users'] if u['username']=='ana.rede')['auditor_id'],aid)
+        self.assertEqual(next(a for a in state['audits'] if a['id']==self.own['id'])['lead_id'],aid)
+        for invalid in [dict(body,name='Bruno'),dict(body,qualifications={}),dict(body,qualifications={'Norma inexistente':['leader']}),dict(body,name='')]:
+            self.fails(400,self.admin,path,invalid,'PUT')
+        self.fails(404,self.admin,'auditors/999999',body,'PUT')
+
     def test_authentication_and_passwords_are_not_exposed(self):
         anonymous=self.client()
         self.fails(401,anonymous,'data')
@@ -127,12 +142,19 @@ class AccessWorkflow(unittest.TestCase):
 
     def test_leader_can_generate_plan_confirm_and_report_without_editing_program(self):
         audit=copy.deepcopy(self.own)
-        plan=dict(date='2027-03-10',periods=[dict(date='2027-03-10',start='08:00',end='12:00')],lead_id=self.auditors[0]['id'],lead='Ana',team_ids=[],norms=['ISO 9001:2015'],requirement_ids=[self.req['id']],requirements='8.4',confirmed=False)
+        plan={key:copy.deepcopy(audit[key]) for key in ['lead_id','lead','team_ids','team','norms','requirement_ids','requirements']}
+        plan.update(date='2027-03-10',periods=[dict(date='2027-03-10',start='08:00',end='12:00')],confirmed=False)
         audit.update(plan=plan,status='Plano em rascunho')
         self.call(self.regular,'audits/'+str(audit['id']),audit,'PUT')
         current=self.call(self.regular,'data')['audits'][0]
         for key,value in [('area','Outra'),('month',4),('lead_id',self.auditors[1]['id']),('role','admin')]:
             self.fails(403,self.regular,'audits/'+str(audit['id']),dict(current,**{key:value}),'PUT')
+        for key,value in [('norms',['ISO 45001']),('team_ids',[]),('requirements','Critério alterado'),('location','Outro local'),('manager_email','outro@example.com'),('manager_name','Outro gestor')]:
+            forbidden=copy.deepcopy(current);forbidden['plan'][key]=value
+            self.fails(403,self.regular,'audits/'+str(audit['id']),forbidden,'PUT')
+        dated=copy.deepcopy(current);dated['plan'].update(date='2027-03-11',periods=[dict(date='2027-03-11',start='13:00',end='17:00')])
+        self.call(self.regular,'audits/'+str(audit['id']),dated,'PUT')
+        current=self.call(self.regular,'data')['audits'][0]
         changed=copy.deepcopy(current);changed['plan']['lead_id']=self.auditors[1]['id']
         self.fails(403,self.regular,'audits/'+str(audit['id']),changed,'PUT')
         current['plan']['confirmed']=True;current['status']='Planejada'

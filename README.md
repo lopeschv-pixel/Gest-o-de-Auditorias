@@ -56,7 +56,7 @@ Protótipo com autenticação local e autorização no servidor; a demonstraçã
 O menu Administração do sistema agrupa Cadastrar usuários, Cadastrar áreas, Cadastrar auditores e Cadastrar normas e requisitos. Usuários contêm nome de rede, nome completo, e-mail, perfil (Administrador ou Usuário) e vínculo ao auditor, obrigatório no perfil Usuário. Esse auditor precisa ter habilitação de líder.
 
 - Administrador: acesso a todos os módulos e cadastros.
-- Usuário: calendário somente com auditorias em que é líder, geração/edição/confirmação de plano, emissão de plano e elaboração do relatório/constatações dessas auditorias. Não programa auditorias, altera cadastros, transfere liderança ou acessa auditorias de outro líder.
+- Usuário: calendário somente com auditorias em que é líder, geração/edição dos dias e horários e confirmação do plano, emissão de plano e elaboração do relatório/constatações dessas auditorias. Não programa auditorias, altera cadastros, transfere liderança ou acessa auditorias de outro líder.
 - O servidor aplica as permissões também nos endpoints; esconder menus não é o único controle.
 
 ### Servidor
@@ -90,3 +90,7 @@ Relatórios em elaboração oferecem Salvar relatório, Editar constatação e E
 O calendário oferece filtro por norma (incluindo Todas as normas), combinado com o ano e a busca. Usa as normas do plano quando existente, ou da programação. Cores: concluída cinza, ISO 9001 azul, ANSN 1.16 + Secretaria Naval laranja, ISO 14001 + ISO 45001 verde e ASME III amarelo. Quando há mais de uma família na mesma auditoria, a prioridade é concluída, ASME, ANSN/Naval, SMS e ISO 9001. Outras combinações conservam a cor padrão.
 
 `python scripts/check_calendar_reports.py` testa filtro, cores, exclusão/cancelamento, correção administrativa e bloqueio de edição por usuários comuns após a conclusão.
+
+Editar programação está disponível na lista anual, no cartão do calendário e na auditoria para administradores, preservando código, tipo e ano. Cada auditor cadastrado oferece Editar auditor para corrigir nome e habilitações; o ID permanece, preservando vínculos de usuários e auditorias. Documentos existentes mantêm seus dados históricos; os cadastros atualizados alimentam novas seleções.
+
+No plano, administradores podem editar todos os campos. O líder tem um formulário apenas de dias/horários, com os demais dados visíveis para consulta. A API também rejeita alterações em normas, requisitos, equipe, local e gestor feitas por usuários comuns. O primeiro plano do líder herda a programação; novas datas exigem confirmar novamente. Planos de relatórios iniciados continuam preservados para rastreabilidade.

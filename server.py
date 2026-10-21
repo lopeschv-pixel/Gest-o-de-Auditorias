@@ -408,6 +408,19 @@ class Handler(SimpleHTTPRequestHandler):
                         raise ValueError('Norma já cadastrada')
                     row = con.execute('INSERT INTO norms(name) VALUES (?)', (name,)).lastrowid
                 return self.send_json(dict(id=row, name=name), 201)
+            if self.path.startswith('/api/auditors/') and self.command=='PUT':
+                aid=int(self.path.split('/')[-1])
+                name=str(data.get('name','')).strip();qualifications=data.get('qualifications',{})
+                if not name or not isinstance(qualifications,dict) or not qualifications or any(n not in norm_names() or not isinstance(r,list) or not r or len(set(r))!=len(r) or any(role not in ['leader','auditor','observer'] for role in r) for n,r in qualifications.items()):
+                    raise ValueError('Informe nome e habilitações válidas')
+                with connection() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    if not con.execute('SELECT 1 FROM auditors WHERE id=?',(aid,)).fetchone():
+                        return self.send_json({'error':'Auditor não encontrado'},404)
+                    if any(e['id']!=aid and e['name'].casefold()==name.casefold() for e in catalog(con,'auditors')):
+                        raise ValueError('Cadastro duplicado')
+                    con.execute('UPDATE auditors SET payload=? WHERE id=?',(json.dumps(dict(name=name,qualifications=qualifications)),aid))
+                return self.send_json({'ok':True})
             if self.path in ['/api/auditors', '/api/requirements'] and self.command == 'POST':
                 table = self.path.split('/')[-1]
                 if table == 'auditors':
