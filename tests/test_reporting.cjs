@@ -25,6 +25,14 @@ assert.ok(internal.includes('Gestão › Qualidade'));assert.ok(internal.include
 const supplier=R.renderDocument({...audit,audit_type:'F',report:{conclusion:'Fornecedor avaliado'}},[],'report','21/10/2026');
 assert.ok(supplier.includes('Conclusão da auditoria de fornecedores'));assert.ok(supplier.includes('Fornecedor avaliado'));
 const plan=R.renderDocument(audit,[],'plan','21/10/2026');assert.ok(plan.includes('Plano de auditoria'));assert.ok(!plan.includes('Constatação 01'));
-const safe=R.findingCards([{...conform,description:'<script>unsafe</script>'}]);assert.ok(safe.includes('&lt;script&gt;'));
+const safe=R.findingCards([{...nc,description:'<script>unsafe</script>'}]);assert.ok(safe.includes('&lt;script&gt;'));
 const removed=R.renderDocument({...audit,plan:{...audit.plan,team:''}},[],'report','21/10/2026');assert.ok(!removed.includes('Equipe prevista'));
 console.log('PASS: classification-specific requirements and fields, hidden-field cleanup, plan team, supplier-only conclusion and document structure.');
+
+assert.equal(conform.description,'');assert.ok(!R.findingCards([conform]).includes('Descrição da conformidade'));
+assert.throws(()=>R.assertComplete(audit,[]));
+assert.throws(()=>R.assertComplete(audit,[{audit_id:7,kind:'Observação',requirement_ids:[1]}]));
+R.assertComplete(audit,[conform]);
+assert.throws(()=>R.assertComplete({...audit,plan:{...audit.plan,requirement_ids:[1,2]}},[conform]));
+assert.ok(internal.includes('Assinatura do auditor líder'));
+assert.ok(!plan.includes('Objetivo e escopo'));

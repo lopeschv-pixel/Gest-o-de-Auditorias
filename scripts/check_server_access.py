@@ -47,7 +47,7 @@ with tempfile.TemporaryDirectory() as directory:
             assert not page.locator('#admin-menu').is_visible()
             assert not page.locator('#new-audit').is_visible()
             page.get_by_role('button',name='Gerar plano',exact=True).click()
-            assert page.locator('[name=lead_id] option').count()==2
+            assert page.locator('[name=lead_id][type=radio]').count()==1
             page.locator('[name=period_date]').fill('2027-03-10')
             page.locator('[name=period_start]').fill('08:00')
             page.locator('[name=period_end]').fill('12:00')
@@ -60,7 +60,6 @@ with tempfile.TemporaryDirectory() as directory:
             page.locator('[name=participants]').fill('Ana')
             assert page.locator('[name=conclusion]').count()==0
             page.locator('[name=participants]').fill('Ana, participante de teste')
-            page.locator('[name=status]').select_option('Concluída')
             page.get_by_role('button',name='Salvar registro',exact=True).click()
             page.get_by_text('Ana, participante de teste',exact=True).wait_for()
             assert not errors,errors

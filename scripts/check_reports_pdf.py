@@ -31,6 +31,13 @@ with sync_playwright() as p:
     page.get_by_role('button',name='Gerar relatório',exact=True).click()
     assert 'Ana Líder' in page.locator('#app').inner_text()
     assert 'Bruno Auditor' in page.locator('#app').inner_text()
+    page.get_by_role('button',name='Editar relatório',exact=True).click()
+    page.get_by_role('button',name='Salvar registro',exact=True).click()
+    alerts=[]
+    page.on('dialog',lambda dialog:(alerts.append(dialog.message),dialog.accept()))
+    page.get_by_role('button',name='Concluir relatório',exact=True).click()
+    assert any('Classifique todos' in message for message in alerts)
+    assert page.locator('#complete-report').count()==1
     for i,kind in enumerate(['Conformidade','Não conformidade','Observação','Oportunidade de melhoria']):
         page.get_by_role('button',name='＋ Registrar constatação',exact=True).click()
         assert page.locator('#modal-title').inner_text()=='Constatação'
@@ -41,7 +48,7 @@ with sync_playwright() as p:
             page.locator('#fields [name=requirement_ids]').first.check()
             if kind=='Conformidade':page.locator('#fields [name=requirement_ids]').last.check()
             page.locator('[data-multi=requirement_ids] summary').click()
-            assert page.locator('#fields textarea').count()==2
+            assert page.locator('#fields textarea').count()==(1 if kind=='Conformidade' else 2)
             label='Evidência encontrada' if kind=='Conformidade' else 'Evidências objetivas'
             page.get_by_label(label+' *',exact=True).fill('Registro verificado. '+('Evidência detalhada. '*120 if kind=='Não conformidade' else '')+' FINAL DA EVIDÊNCIA')
             if kind=='Não conformidade':
@@ -54,19 +61,23 @@ with sync_playwright() as p:
             assert page.locator('#fields [name=pac]').count()==0
             assert page.get_by_label(kind+' *',exact=True).count()==1
         description=(kind+' registrada. ')* (110 if kind=='Não conformidade' else 1)
-        page.locator('#fields [name=description]').fill(description)
+        if kind!='Conformidade':page.locator('#fields [name=description]').fill(description)
+        else:assert page.locator('#fields [name=description]').count()==0
         page.get_by_role('button',name='Salvar registro',exact=True).click()
         page.locator('#modal').wait_for(state='hidden')
         assert page.locator('#app .finding-card').count()==i+1
     page.get_by_role('button',name='Editar relatório',exact=True).click()
     assert page.locator('[name=conclusion]').count()==0
     page.locator('[name=participants]').fill('Gestor da área auditada')
-    page.locator('[name=status]').select_option('Concluída')
     page.get_by_role('button',name='Salvar registro',exact=True).click()
     page.locator('#modal').wait_for(state='hidden')
+    page.get_by_role('button',name='Concluir relatório',exact=True).click()
+    assert page.locator('#complete-report').count()==0
     page.evaluate('window.print=()=>{}')
     page.get_by_role('button',name='Gerar PDF do relatório',exact=True).click()
     print_text=page.locator('#print-document').inner_text()
+    assert 'Assinatura do auditor líder' in print_text
+    assert 'Descrição da conformidade' not in print_text
     assert 'Plano de auditoria' not in print_text
     assert 'Conclusão' not in print_text
     assert 'Ana Líder' in print_text and 'Bruno Auditor' in print_text
@@ -76,9 +87,9 @@ with sync_playwright() as p:
     page.emulate_media(media='screen')
     supplier=page.evaluate("async()=>{const result=await api('audits','POST',{...reportFixture,audit_type:'F'});selected={id:result.id,tab:'report'};await load();return result;}")
     page.get_by_role('button',name='Editar relatório',exact=True).click()
-    page.locator('[name=status]').select_option('Concluída')
     page.get_by_role('button',name='Salvar registro',exact=True).click()
-    page.locator('#error').get_by_text('Informe a conclusão do relatório.',exact=True).wait_for()
+    page.locator('#modal').wait_for(state='hidden')
+    page.get_by_role('button',name='Editar relatório',exact=True).click()
     page.get_by_label('Conclusão da auditoria de fornecedores',exact=True).fill('Fornecedor avaliado conforme critérios previstos.')
     page.get_by_role('button',name='Salvar registro',exact=True).click()
     page.locator('#modal').wait_for(state='hidden')

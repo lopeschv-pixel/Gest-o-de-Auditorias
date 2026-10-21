@@ -186,7 +186,7 @@ def validate_periods(periods):
 
 
 def normalize_finding(con, data, audit):
-    result=dict(audit_id=data['audit_id'],kind=data['kind'],area=audit['area'],description=data['description'].strip(),auditor_name=(audit.get('plan') or audit).get('lead',''))
+    result=dict(audit_id=data['audit_id'],kind=data['kind'],area=audit['area'],description='' if data['kind']=='Conformidade' else data['description'].strip(),auditor_name=(audit.get('plan') or audit).get('lead',''))
     if data['kind'] in ['Conformidade','Não conformidade']:
         ids=data['requirement_ids']
         if len(set(ids))!=len(ids):
@@ -205,14 +205,14 @@ def normalize_finding(con, data, audit):
 
 def validate(data, finding=False):
     if finding:
-        required = ['audit_id','kind','description']
+        required = ['audit_id','kind']+([] if data.get('kind')=='Conformidade' else ['description'])
     else:
         required = ['audit_type','year','month','area','lead','norms','requirements']
     for key in required:
         if not data.get(key) or isinstance(data[key],str) and not data[key].strip():
             raise ValueError('Preencha o campo: '+key)
     if finding:
-        if not isinstance(data.get('description'),str):
+        if data.get('kind')!='Conformidade' and not isinstance(data.get('description'),str):
             raise ValueError('Informe a descrição da constatação')
         if data['kind'] not in ['Conformidade','Não conformidade','Observação','Oportunidade de melhoria']:
             raise ValueError('Classificação inválida')
@@ -449,6 +449,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({'id': row}, 201)
             if self.path == '/api/audits' and self.command == 'POST':
                 validate(data)
+                if data.get('status')=='Concluída':
+                    raise ValueError('Registre e classifique os requisitos antes de concluir o relatório')
                 with connection() as con:
                     con.execute('BEGIN IMMEDIATE')
                     check_area(con, data)
@@ -482,6 +484,15 @@ class Handler(SimpleHTTPRequestHandler):
                         has_findings = con.execute('SELECT 1 FROM findings WHERE audit_id=?', (int(self.path.split('/')[-1]),)).fetchone()
                         if (previous.get('report') or has_findings) and previous.get('plan') != data.get('plan'):
                             raise ValueError('O relatório já foi iniciado; preserve o plano confirmado')
+                    if data.get('status')=='Concluída':
+                        required_ids=set(data.get('plan',{}).get('requirement_ids',[]))
+                        covered=set()
+                        for (payload,) in con.execute('SELECT payload FROM findings WHERE audit_id=?',(int(self.path.split('/')[-1]),)):
+                            finding=json.loads(payload)
+                            if finding.get('kind') in ['Conformidade','Não conformidade']:
+                                covered.update(finding.get('requirement_ids',[]))
+                        if not isinstance(data.get('report'),dict) or not required_ids or required_ids-covered:
+                            raise ValueError('Classifique todos os requisitos em conformidade ou não conformidade antes de concluir o relatório')
                     cur = con.execute('UPDATE audits SET payload=? WHERE id=?', (json.dumps(data), int(self.path.split('/')[-1])))
                     if not cur.rowcount:
                         return self.send_json({'error': 'Auditoria não encontrada'}, 404)

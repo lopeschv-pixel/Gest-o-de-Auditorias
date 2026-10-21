@@ -11,6 +11,8 @@ html = html.replace('<script src="/planning.js"></script>', '<script>globalThis.
 html = html.replace('<script src="/access-policy.js"></script>', '<script>' + (static / 'access-policy.js').read_text() + '</script>')
 html = html.replace('<script src="/planning.js"></script>', '<script>' + (static / 'planning.js').read_text() + '</script>')
 html = html.replace('<script src="/reporting.js"></script>', '<script>' + (static / 'reporting.js').read_text() + '</script>')
+for script in ['vendor/jspdf.umd.min.js','email.js']:
+    html=html.replace(f'<script src="/{script}"></script>', '<script>'+(static/script).read_text()+'</script>')
 html = html.replace('<script src="/app.js"></script>', '<script>window.NUCLAUD_PREVIEW=true;</script><script>' + (static / 'app.js').read_text() + '</script>')
 html = html.replace('href="/"', 'href="#"').replace('Ambiente de desenvolvimento', 'Prévia local · dados neste navegador')
 output = Path('/tmp/nuclaud-preview/NUCLAUD-v12.html')

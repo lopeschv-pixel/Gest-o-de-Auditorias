@@ -63,6 +63,7 @@ class Workflow(unittest.TestCase):
         self.assertEqual(ctx.exception.code,400)
         finding['pac']='PAC-001'
         self.request('/api/findings',finding)
+        self.request('/api/findings',dict(audit_id=aid,kind='Conformidade',requirement_ids=[3],evidence='Verificação ASME'))
         audit.update(status='Concluída', report={'conclusion':'Auditoria realizada com uma não conformidade.'})
         self.request('/api/audits/'+str(aid),audit,'PUT')
         state=self.request('/api/data')
@@ -75,7 +76,7 @@ class Workflow(unittest.TestCase):
         self.assertEqual(own_finding['pac'],'PAC-001')
         self.assertEqual(own_finding['audit_id'],aid)
         with server.connection() as con:
-            self.assertEqual(con.execute('SELECT count(*) FROM findings WHERE audit_id=?',(aid,)).fetchone()[0],1)
+            self.assertEqual(con.execute('SELECT count(*) FROM findings WHERE audit_id=?',(aid,)).fetchone()[0],2)
 
     def test_missing_audit_rejected(self):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
@@ -232,6 +233,12 @@ class Workflow(unittest.TestCase):
         saved=next(a for a in self.request('/api/data')['audits'] if a['id']==audit['id'])
         self.assertNotIn('conclusion',saved['report'])
         supplier=make('F')
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request('/api/audits/'+str(supplier['id']),dict(supplier,status='Concluída',report={'conclusion':'Sem classificação'}),'PUT')
+        self.request('/api/findings',dict(audit_id=supplier['id'],kind='Observação',description='Não conta como classificação'))
+        with self.assertRaises(urllib.error.HTTPError):
+            self.request('/api/audits/'+str(supplier['id']),dict(supplier,status='Concluída',report={'conclusion':'Só observação'}),'PUT')
+        self.request('/api/findings',dict(audit_id=supplier['id'],kind='Conformidade',requirement_ids=[1],evidence='Registro analisado'))
         with self.assertRaises(urllib.error.HTTPError):
             self.request('/api/audits/'+str(supplier['id']),dict(supplier,status='Concluída',report={'participants':'Equipe'}),'PUT')
         self.request('/api/audits/'+str(supplier['id']),dict(supplier,status='Concluída',report={'participants':'Equipe','conclusion':'Fornecedor avaliado'}),'PUT')

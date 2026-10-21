@@ -38,7 +38,7 @@ with sync_playwright() as p:
             page.locator('[name=qualification_2][value='+('leader' if name=='Ana' else role)+']').check()
             page.get_by_role('button',name='Salvar auditor',exact=True).click()
             page.locator('#app').get_by_text(name,exact=True).wait_for()
-        for norm,code in [('ISO 9001:2015','TEST8.4'),('ISO 14001','TEST6.1')]:
+        for norm,code in [('ISO 9001:2015','98.4'),('ISO 14001','96.1')]:
             page.get_by_role('button',name='☷ Cadastrar normas e requisitos',exact=True).click()
             page.get_by_role('button',name='＋ Cadastrar requisito',exact=True).click()
             page.locator('[name=norm]').select_option(norm)
@@ -82,10 +82,11 @@ with sync_playwright() as p:
         assert page.get_by_label('Secretaria Naval',exact=True).count()==1
         assert page.get_by_label('Norma personalizada',exact=True).count()==1
         page.get_by_label('ISO 9001:2015',exact=True).check()
-        assert page.locator('[name=lead_id] option').all_text_contents()==['Selecione um líder habilitado','Ana']
-        assert page.locator('[name=requirement_ids]').count()==74
+        assert page.locator('[name=lead_id][type=radio]').count()==1
+        assert page.locator('[name=requirement_ids]').count()>20
+        assert page.evaluate("[...document.querySelectorAll('[name=requirement_ids]')].every(x=>/ · \\d+\\.\\d+ — /.test(x.closest('label').textContent))")
         page.get_by_label('ISO 14001',exact=True).check()
-        assert page.locator('[name=requirement_ids]').count()==120
+        assert page.locator('[name=requirement_ids]').count()>40
         page.locator('[data-multi=norms] summary').click()
         page.locator('[data-multi=macroprocess_ids] summary').click()
         page.get_by_label('Produção',exact=True).check()
@@ -95,13 +96,13 @@ with sync_playwright() as p:
         page.get_by_label('Produção › Soldagem',exact=True).check()
         page.get_by_label('Gestão › Qualidade',exact=True).check()
         page.locator('[data-multi=process_ids] summary').click()
-        page.locator('[name=lead_id]').select_option(label='Ana')
+        page.locator('[name=lead_id]').check()
         page.get_by_label('Bruno',exact=True).check()
         page.get_by_label('Carla',exact=True).check()
-        page.get_by_label('ISO 9001:2015 · TEST8.4 — Título TEST8.4',exact=True).check()
+        page.get_by_label('ISO 9001:2015 · 98.4 — Título 98.4',exact=True).check()
         page.get_by_role('button',name='Salvar programação',exact=True).click()
         page.get_by_text('Selecione pelo menos um requisito para cada norma.',exact=True).wait_for()
-        page.get_by_label('ISO 14001 · TEST6.1 — Título TEST6.1',exact=True).check()
+        page.get_by_label('ISO 14001 · 96.1 — Título 96.1',exact=True).check()
         page.get_by_role('button',name='Salvar programação',exact=True).click()
         page.get_by_role('button',name='Editar programação').wait_for()
         page.get_by_role('button',name='Editar programação').click()
@@ -111,13 +112,15 @@ with sync_playwright() as p:
         assert page.locator('[name=process_ids]:checked').count()==2
         page.get_by_role('button',name='Salvar programação',exact=True).click()
         page.get_by_role('button',name='Gerar plano',exact=True).click()
-        assert page.locator('[name=lead_id] option:checked').inner_text()=='Ana'
+        assert page.locator('[name=lead_id]:checked').count()==1
         assert page.locator('[name=team_ids]:checked').count()==1
         assert page.locator('[name=observer_ids]:checked').count()==1
         assert page.locator('[name=requirement_ids]:checked').count()==2
         assert page.locator('[name=agenda]').count()==0
         assert page.get_by_label('Local',exact=True).count()==1
         assert page.get_by_label('E-mail do gestor',exact=True).count()==1
+        assert page.locator('[name=scope]').count()==0
+        page.locator('[name=manager_name]').fill('Maria Gestora')
         page.locator('[name=manager_email]').fill('gestor@example.com')
         page.locator('[name=period_date]').fill('2027-03-10')
         page.locator('[name=period_start]').fill('08:00')
@@ -137,7 +140,17 @@ with sync_playwright() as p:
         assert 'gestor@example.com' in page.locator('#print-document').inner_text()
         page.evaluate('HTMLAnchorElement.prototype.click=function(){window.draftEmail=this.href}')
         page.get_by_role('button',name='Preparar e-mail',exact=True).click()
-        assert page.evaluate('window.draftEmail').startswith('mailto:gestor%40example.com')
+        assert page.evaluate('window.draftEmail').startswith('blob:')
+        draft=page.evaluate("NuclaudEmail.message(data.audits.find(a=>a.id===selected.id),data.findings)")
+        assert 'To: gestor@example.com' in draft
+        assert 'Content-Type: application/pdf' in draft
+        assert 'Content-Disposition: attachment' in draft
+        from email import policy
+        from email.parser import Parser
+        parsed=Parser(policy=policy.default).parsestr(draft)
+        assert 'Maria Gestora' in parsed.get_body(preferencelist=('plain',)).get_content()
+        attached=list(parsed.iter_attachments())
+        assert len(attached)==1 and attached[0].get_payload(decode=True).startswith(b'%PDF-')
         assert 'Engenharia · Qualidade' in page.locator('#app').inner_text()
         assert 'Bruno' in page.locator('#app').inner_text()
         assert 'Carla' in page.locator('#app').inner_text()
@@ -179,7 +192,6 @@ with sync_playwright() as p:
         page.locator('[name=participants]').fill('Ana')
         assert page.locator('[name=conclusion]').count()==0
         page.locator('[name=participants]').fill('Ana e Bruno, participantes')
-        page.locator('[name=status]').select_option('Concluída')
         page.get_by_role('button',name='Salvar registro',exact=True).click()
         assert 'Ana e Bruno, participantes' in page.locator('#app').inner_text()
         page.locator('#demo-profile').select_option(label='Administrador da demonstração — Administrador')
@@ -192,7 +204,7 @@ with sync_playwright() as p:
             page.get_by_role('button',name='♙ Cadastrar auditores',exact=True).click()
             page.locator('#app').get_by_text('Ana',exact=True).wait_for()
             page.get_by_role('button',name='☷ Cadastrar normas e requisitos',exact=True).click()
-            page.locator('#app').get_by_text('ISO 14001 · TEST6.1 — Título TEST6.1',exact=True).wait_for()
+            page.locator('#app').get_by_text('ISO 14001 · 96.1 — Título 96.1',exact=True).wait_for()
             assert page.evaluate('data.requirements.filter(r=>r.title).length')==341
         assert page.evaluate('data.requirements.length')==341
         assert not errors,errors

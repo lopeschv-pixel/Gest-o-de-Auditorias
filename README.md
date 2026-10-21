@@ -78,3 +78,9 @@ Não existe backend no Pages. O administrador da demonstração é um perfil fic
 Na Administração, cadastre macroprocessos e seus processos vinculados. A programação exige selecionar um ou mais macroprocessos e pelo menos um processo de cada macroprocesso escolhido. O plano e o relatório apresentam essas informações. Registros antigos são preservados; ao editar a programação, complete os novos campos.
 
 `node tests/test_reporting.cjs` valida as classificações e a composição dos documentos. `python scripts/check_reports_pdf.py` verifica os formulários no navegador e gera PDFs A4 de plano, relatório interno longo e relatório de fornecedor, conferindo conteúdo e margens.
+
+A programação e o plano oferecem requisitos de dois níveis (ex.: 4.1), ordenados numericamente por norma. O auditor líder é escolhido por marcação única. Seletores múltiplos fecham ao clicar fora ou em Concluir seleção. O plano inclui nome/e-mail do gestor; objetivo e escopo aparecem apenas para fornecedores.
+
+Conformidades registram requisitos e evidência encontrada, sem descrição adicional. O botão Concluir relatório exige que todos os IDs de requisitos do plano tenham uma conformidade ou não conformidade; observações e oportunidades não substituem essa classificação. O servidor aplica a mesma regra. O PDF inclui espaço para assinatura do auditor líder e data.
+
+Preparar e-mail baixa um rascunho `.eml` com destinatário, mensagem e plano PDF anexado, gerado localmente com jsPDF 4.2.1 (MIT, licença preservada em static/vendor). Abra o arquivo em um aplicativo de e-mail compatível para revisar e enviar; a abertura automática de rascunhos depende do aplicativo/sistema operacional. Não envia e-mails pelo servidor nem usa mailto para anexos.
