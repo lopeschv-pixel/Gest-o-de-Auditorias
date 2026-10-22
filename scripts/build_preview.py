@@ -6,6 +6,12 @@ html = (static / 'index.html').read_text()
 css = (static / 'style.css').read_text()
 css = css[css.index(':root'):]
 html = html.replace('<link rel="stylesheet" href="/style.css">', '<style>' + css + '</style>')
+theme=(static/'theme.css').read_text()
+hero=static/'assets'/'nuclaud-hero.png'
+if hero.exists():
+    import base64
+    theme=theme.replace('/assets/nuclaud-hero.png','data:image/png;base64,'+base64.b64encode(hero.read_bytes()).decode())
+html=html.replace('<link rel="stylesheet" href="/theme.css">','<style>'+theme+'</style>')
 catalog = (static / 'requirements-catalog.json').read_text()
 html = html.replace('<script src="/planning.js"></script>', '<script>globalThis.NUCLAUD_REQUIREMENT_CATALOG=' + catalog + ';</script><script src="/planning.js"></script>')
 html = html.replace('<script src="/access-policy.js"></script>', '<script>' + (static / 'access-policy.js').read_text() + '</script>')
