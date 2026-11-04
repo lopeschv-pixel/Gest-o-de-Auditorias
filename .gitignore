@@ -16,3 +16,4 @@ appsettings.Local.json
 !.env.exemplo
 .devcontainer/.env
 chaves/
+*.zip
