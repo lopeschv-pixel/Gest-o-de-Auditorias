@@ -1,0 +1,157 @@
+@page "/admin/auditores"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject AuditorServico AuditoresSrv
+@inject NormaServico NormasSrv
+@inject UsuarioServico UsuariosSrv
+
+<PageTitle>Cadastrar auditores — NUCLAUD</PageTitle>
+<PageHeader Titulo="Cadastrar auditores" Subtitulo="Habilitações por norma: Auditor líder, Auditor e Observador (marcações independentes).">
+    <Migalhas><a href="/admin">Administração do sistema</a> › Auditores</Migalhas>
+    <ChildContent><button type="button" class="btn btn-destaque" @onclick="Novo"><Icone Nome="mais" />Novo auditor</button></ChildContent>
+</PageHeader>
+
+<div class="conteudo">
+    @if (ErroCarga != null) { <div class="alerta alerta-erro">@ErroCarga</div> }
+    @if (_edicao == null) { <ListaErros Erros="Erros" /> }
+    <div class="tabela-wrap">
+        <table class="tabela">
+            <thead><tr><th>Nome completo</th><th>E-mail</th><th>Usuário de acesso</th><th>Habilitações</th><th>Participações</th><th>Situação</th><th class="acoes">Ações</th></tr></thead>
+            <tbody>
+                @if (_lista.Count == 0) { <tr><td colspan="7" class="vazio">Nenhum auditor cadastrado.</td></tr> }
+                @foreach (var a in _lista)
+                {
+                    <tr>
+                        <td><strong>@a.NomeCompleto</strong></td>
+                        <td>@(a.Email ?? "—")</td>
+                        <td>@(a.Usuario?.NomeRede ?? "—")</td>
+                        <td class="pequeno">
+                            @foreach (var h in a.Habilitacoes.OrderBy(h => NomeNorma(h.NormaId)))
+                            {
+                                var funcoes = new List<string>();
+                                if (h.PodeLiderar) funcoes.Add("Auditor líder");
+                                if (h.PodeAuditar) funcoes.Add("Auditor");
+                                if (h.PodeObservar) funcoes.Add("Observador");
+                                <div><strong>@NomeNorma(h.NormaId):</strong> @string.Join(", ", funcoes)</div>
+                            }
+                        </td>
+                        <td>@_usos.GetValueOrDefault(a.Id)</td>
+                        <td><span class="etiqueta @(a.Ativo ? "etiqueta-ativo" : "etiqueta-inativo")">@(a.Ativo ? "Ativo" : "Inativo")</span></td>
+                        <td class="acoes">
+                            <button type="button" class="btn btn-secundario btn-pequeno" @onclick="() => Editar(a)"><Icone Nome="editar" />Editar</button>
+                            <button type="button" class="btn btn-perigo btn-pequeno" @onclick="() => Excluir(a)"><Icone Nome="excluir" />Excluir</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="texto-suave pequeno" style="margin-top:.8rem">Alterar habilitações não apaga participações anteriores. Auditores com participações não podem ser excluídos — inative-os.</p>
+</div>
+
+@if (_edicao != null)
+{
+    <Dialogo Titulo="@(_edicao.Id == null ? "Novo auditor" : "Editar auditor")" Largo="true" AoFechar="() => _edicao = null">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <div class="grade">
+                <div class="campo col-6"><label for="a-nome" class="obrigatorio">Nome completo</label><input id="a-nome" type="text" maxlength="200" @bind="_edicao.NomeCompleto" /></div>
+                <div class="campo col-6"><label for="a-email">E-mail</label><input id="a-email" type="email" maxlength="254" @bind="_edicao.Email" /><span class="ajuda">Quando disponível.</span></div>
+                <div class="campo col-6">
+                    <label for="a-usuario">Vínculo com usuário de acesso</label>
+                    <select id="a-usuario" value="@(_edicao.UsuarioId?.ToString() ?? "")" @onchange="e => _edicao.UsuarioId = int.TryParse(e.Value?.ToString(), out var u) ? u : null">
+                        <option value="">Sem vínculo</option>
+                        @foreach (var u in _usuarios.Where(u => u.AuditorId == null || u.AuditorId == _edicao.Id || u.Id == _edicao.UsuarioId))
+                        {
+                            <option value="@u.Id">@u.NomeRede — @u.NomeCompleto</option>
+                        }
+                    </select>
+                    <span class="ajuda">O cadastro de auditor não concede acesso ao sistema por si só.</span>
+                </div>
+                <div class="col-6" style="display:flex;align-items:end"><label class="marcador"><input type="checkbox" @bind="_edicao.Ativo" />Ativo</label></div>
+            </div>
+            <h3 style="margin-top:1.2rem">Habilitações por norma</h3>
+            <div class="tabela-wrap">
+                <table class="matriz-hab">
+                    <thead><tr><th>Norma</th><th>Funções</th></tr></thead>
+                    <tbody>
+                        @foreach (var n in _normas.Where(n => n.Ativo || _edicao.Habilitacoes.Any(h => h.NormaId == n.Id)))
+                        {
+                            var h = Hab(n.Id);
+                            <tr>
+                                <td><strong>@n.Nome</strong></td>
+                                <td>
+                                    <div class="opcoes-radio horizontal" role="group" aria-label="Funções em @n.Nome">
+                                        <label class="marcador"><input type="checkbox" checked="@h.PodeLiderar" @onchange="e => h.PodeLiderar = (bool)e.Value!" />Auditor líder</label>
+                                        <label class="marcador"><input type="checkbox" checked="@h.PodeAuditar" @onchange="e => h.PodeAuditar = (bool)e.Value!" />Auditor</label>
+                                        <label class="marcador"><input type="checkbox" checked="@h.PodeObservar" @onchange="e => h.PodeObservar = (bool)e.Value!" />Observador</label>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="() => _edicao = null">Cancelar</button>
+            <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="Salvar">Salvar auditor</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@code {
+    private List<Auditor> _lista = new();
+    private List<Norma> _normas = new();
+    private List<UsuarioResumo> _usuarios = new();
+    private Dictionary<int, int> _usos = new();
+    private AuditorEdicao? _edicao;
+
+    private string NomeNorma(int id) => _normas.FirstOrDefault(n => n.Id == id)?.Nome ?? "?";
+
+    protected override async Task OnInitializedAsync() => await Carregar(Recarregar);
+
+    private async Task Recarregar()
+    {
+        _lista = await AuditoresSrv.ListarAsync();
+        _normas = await NormasSrv.ListarAsync();
+        _usuarios = await UsuariosSrv.ListarAsync(await ObterAtorAsync());
+        _usos = await AuditoresSrv.ContarParticipacoesAsync();
+    }
+
+    private HabilitacaoEdicao Hab(int normaId)
+    {
+        var h = _edicao!.Habilitacoes.FirstOrDefault(x => x.NormaId == normaId);
+        if (h == null) _edicao.Habilitacoes.Add(h = new HabilitacaoEdicao { NormaId = normaId });
+        return h;
+    }
+
+    private void Novo() { Erros.Clear(); _edicao = new AuditorEdicao(); }
+
+    private void Editar(Auditor a)
+    {
+        Erros.Clear();
+        _edicao = new AuditorEdicao
+        {
+            Id = a.Id, Versao = a.Versao, NomeCompleto = a.NomeCompleto, Email = a.Email, UsuarioId = a.UsuarioId, Ativo = a.Ativo,
+            Habilitacoes = a.Habilitacoes.Select(h => new HabilitacaoEdicao { NormaId = h.NormaId, PodeLiderar = h.PodeLiderar, PodeAuditar = h.PodeAuditar, PodeObservar = h.PodeObservar }).ToList()
+        };
+    }
+
+    private async Task Salvar()
+    {
+        if (_edicao == null) return;
+        if (await Executar(async () => await AuditoresSrv.SalvarAsync(await ObterAtorAsync(), _edicao), "Auditor salvo com sucesso."))
+        {
+            _edicao = null;
+            await Recarregar();
+        }
+    }
+
+    private async Task Excluir(Auditor a)
+    {
+        if (!await Confirmacao.ConfirmarAsync("Excluir auditor", $"Deseja excluir o auditor {a.NomeCompleto}?", "Excluir auditor", true)) return;
+        if (await Executar(async () => await AuditoresSrv.ExcluirAsync(await ObterAtorAsync(), a.Id), "Auditor excluído."))
+            await Recarregar();
+    }
+}

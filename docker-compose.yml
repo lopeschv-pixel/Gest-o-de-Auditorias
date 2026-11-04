@@ -1,0 +1,33 @@
+# Ambiente de TESTES/DEMONSTRAÇÃO com SQL Server em contêiner (opcional).
+# Os segredos vêm do arquivo .env (não versionado). Gere-o com: bash scripts/gerar-env.sh
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+      MSSQL_SA_PASSWORD: "${NUCLAUD_SA_SENHA:?defina no .env}"
+    volumes:
+      - sqldados:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" || exit 1"]
+      interval: 10s
+      retries: 12
+    restart: unless-stopped
+  app:
+    build: .
+    depends_on: [sql]
+    ports:
+      - "5251:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Testes"
+      ConnectionStrings__NuClaud: "Server=sql,1433;Database=NuClaud_Testes;User Id=sa;Password=${NUCLAUD_SA_SENHA};TrustServerCertificate=true"
+      Inicializacao__AdminNomeRede: "admin"
+      Inicializacao__AdminSenhaInicial: "${NUCLAUD_ADMIN_SENHA_INICIAL:?defina no .env}"
+      Demonstracao__SenhaUsuarios: "${NUCLAUD_DEMO_SENHA:-}"
+    volumes:
+      - appdados:/dados
+    restart: unless-stopped
+volumes:
+  sqldados:
+  appdados:

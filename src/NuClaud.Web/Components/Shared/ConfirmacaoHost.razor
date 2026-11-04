@@ -1,0 +1,25 @@
+@implements IDisposable
+@inject ServicoConfirmacao Servico
+
+@if (Servico.Atual is { } p)
+{
+    <Dialogo Titulo="@p.Titulo" AoFechar="() => Servico.Responder(false)" Papel="alertdialog">
+        <Corpo>
+            <p>@p.Mensagem</p>
+            @if (p.Itens is { Count: > 0 })
+            {
+                <ul>@foreach (var i in p.Itens) { <li>@i</li> }</ul>
+            }
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="() => Servico.Responder(false)">Cancelar</button>
+            <button type="button" class="btn @(p.Perigo ? "btn-perigo-cheio" : "btn-primario")" @onclick="() => Servico.Responder(true)">@p.TextoConfirmar</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@code {
+    protected override void OnInitialized() => Servico.Mudou += Atualizar;
+    private void Atualizar() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Servico.Mudou -= Atualizar;
+}

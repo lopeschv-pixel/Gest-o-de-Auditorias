@@ -1,0 +1,89 @@
+@page "/admin/areas"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject CadastroServico Cadastro
+
+<PageTitle>Cadastrar áreas — NUCLAUD</PageTitle>
+<PageHeader Titulo="Cadastrar áreas" Subtitulo="As áreas ativas aparecem automaticamente na programação de auditorias internas.">
+    <Migalhas><a href="/admin">Administração do sistema</a> › Áreas</Migalhas>
+    <ChildContent><button type="button" class="btn btn-destaque" @onclick="Nova"><Icone Nome="mais" />Nova área</button></ChildContent>
+</PageHeader>
+
+<div class="conteudo">
+    @if (ErroCarga != null) { <div class="alerta alerta-erro">@ErroCarga</div> }
+    @if (_edicao == null) { <ListaErros Erros="Erros" /> }
+    <div class="tabela-wrap">
+        <table class="tabela">
+            <thead><tr><th>Nome da área</th><th>Situação</th><th>Uso em auditorias</th><th class="acoes">Ações</th></tr></thead>
+            <tbody>
+                @if (_lista.Count == 0) { <tr><td colspan="4" class="vazio">Nenhuma área cadastrada.</td></tr> }
+                @foreach (var a in _lista)
+                {
+                    var usos = _usos.GetValueOrDefault(a.Id);
+                    <tr>
+                        <td>@a.Nome</td>
+                        <td><span class="etiqueta @(a.Ativo ? "etiqueta-ativo" : "etiqueta-inativo")">@(a.Ativo ? "Ativa" : "Inativa")</span></td>
+                        <td>@usos</td>
+                        <td class="acoes">
+                            <button type="button" class="btn btn-secundario btn-pequeno" @onclick="() => Editar(a)"><Icone Nome="editar" />Editar</button>
+                            <button type="button" class="btn btn-perigo btn-pequeno" @onclick="() => Excluir(a)"><Icone Nome="excluir" />Excluir</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="texto-suave pequeno" style="margin-top:.8rem">Áreas já usadas em auditorias não podem ser excluídas — inative-as. Alterar o nome não modifica auditorias e documentos já registrados.</p>
+</div>
+
+@if (_edicao != null)
+{
+    <Dialogo Titulo="@(_edicao.Id == null ? "Nova área" : "Editar área")" AoFechar="() => _edicao = null">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <div class="campo">
+                <label for="nome" class="obrigatorio">Nome da área</label>
+                <input id="nome" type="text" maxlength="150" @bind="_edicao.Nome" />
+            </div>
+            <label class="marcador" style="margin-top:.8rem"><input type="checkbox" @bind="_edicao.Ativo" />Ativa</label>
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="() => _edicao = null">Cancelar</button>
+            <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="Salvar">Salvar área</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@code {
+    private List<Area> _lista = new();
+    private Dictionary<int, int> _usos = new();
+    private AreaEdicao? _edicao;
+
+    protected override async Task OnInitializedAsync() => await Carregar(Recarregar);
+
+    private async Task Recarregar()
+    {
+        _lista = await Cadastro.ListarAreasAsync();
+        _usos = await Cadastro.ContarUsoAreasAsync();
+    }
+
+    private void Nova() { Erros.Clear(); _edicao = new AreaEdicao(); }
+    private void Editar(Area a) { Erros.Clear(); _edicao = new AreaEdicao { Id = a.Id, Versao = a.Versao, Nome = a.Nome, Ativo = a.Ativo }; }
+
+    private async Task Salvar()
+    {
+        if (_edicao == null) return;
+        if (await Executar(async () => await Cadastro.SalvarAreaAsync(await ObterAtorAsync(), _edicao), "Área salva com sucesso."))
+        {
+            _edicao = null;
+            await Recarregar();
+        }
+    }
+
+    private async Task Excluir(Area a)
+    {
+        if (!await Confirmacao.ConfirmarAsync("Excluir área", $"Deseja excluir a área \"{a.Nome}\"?", "Excluir área", true)) return;
+        if (await Executar(async () => await Cadastro.ExcluirAreaAsync(await ObterAtorAsync(), a.Id), "Área excluída."))
+            await Recarregar();
+    }
+}

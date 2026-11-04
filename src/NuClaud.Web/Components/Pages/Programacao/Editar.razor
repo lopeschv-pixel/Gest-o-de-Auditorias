@@ -1,0 +1,476 @@
+@page "/programacao/nova"
+@page "/programacao/{Id:int}/editar"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject ProgramacaoServico Programacao
+@inject IRelogio Relogio
+
+<PageTitle>@(Id == null ? "Nova auditoria" : $"Editar {_codigo}") — NUCLAUD</PageTitle>
+<PageHeader Titulo="@(Id == null ? "Programar nova auditoria" : $"Editar programação {_codigo}")"
+            Subtitulo="@(Id == null ? "O código será gerado automaticamente ao salvar." : "Os dados atuais estão preenchidos abaixo.")">
+    <Migalhas><a href="/programacao">Programar auditorias</a> › @(Id == null ? "Nova" : _codigo)</Migalhas>
+</PageHeader>
+
+<NavigationLock ConfirmExternalNavigation="_sujo" OnBeforeInternalNavigation="ConfirmarSaida" />
+
+<div class="conteudo">
+    @if (ErroCarga != null)
+    {
+        <div class="alerta alerta-erro" role="alert">@ErroCarga</div>
+    }
+    else if (_dados == null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        <ListaErros Erros="Erros" />
+        @if (_bloqueio != null)
+        {
+            <div class="alerta alerta-aviso" role="note"><strong>Alterações limitadas.</strong> @_bloqueio</div>
+        }
+        else if (_temPlano || _temRelatorio)
+        {
+            <div class="alerta alerta-info" role="note">
+                Esta auditoria já possui @(_temRelatorio ? "plano e relatório (em revisão)" : "plano salvo"). O plano herda os dados desta programação;
+                as alterações ficam registradas no histórico.
+                @if (_temRelatorio) { <span>Requisitos já classificados em constatações não podem ser retirados.</span> }
+            </div>
+        }
+
+        <form @onsubmit="Salvar" @onsubmit:preventDefault="true" novalidate>
+            <section class="cartao">
+                <h2 class="secao-titulo">Identificação</h2>
+                <div class="grade">
+                    <div class="campo col-4">
+                        <span class="rotulo obrigatorio" id="rot-tipo">Tipo</span>
+                        <div class="opcoes-radio horizontal" role="radiogroup" aria-labelledby="rot-tipo">
+                            <label class="marcador @(Id != null ? "desabilitado" : "")">
+                                <input type="radio" name="tipo" checked="@(_m.Tipo == TipoAuditoria.Interna)" disabled="@(Id != null)" @onchange="() => TrocarTipo(TipoAuditoria.Interna)" />Interna
+                            </label>
+                            <label class="marcador @(Id != null ? "desabilitado" : "")">
+                                <input type="radio" name="tipo" checked="@(_m.Tipo == TipoAuditoria.Fornecedor)" disabled="@(Id != null)" @onchange="() => TrocarTipo(TipoAuditoria.Fornecedor)" />Fornecedores
+                            </label>
+                        </div>
+                        @if (Id != null) { <span class="ajuda">Tipo e ano definem o código e não podem ser alterados.</span> }
+                    </div>
+                    <div class="campo col-4">
+                        <label for="ano" class="obrigatorio">Ano</label>
+                        <input id="ano" type="number" min="2000" max="2100" value="@_m.Ano" disabled="@(Id != null)" @onchange="DefinirAno" />
+                    </div>
+                    <div class="campo col-4">
+                        <label for="mes" class="obrigatorio">Mês previsto</label>
+                        <select id="mes" value="@_m.MesPrevisto" @onchange="DefinirMes">
+                            <option value="0">Selecione…</option>
+                            @for (int i = 1; i <= 12; i++) { <option value="@i">@Rotulos.NomeMes(i)</option> }
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            @if (_m.Tipo == TipoAuditoria.Fornecedor)
+            {
+                <section class="cartao">
+                    <h2 class="secao-titulo">Fornecedor</h2>
+                    <div class="grade">
+                        <div class="campo col-8">
+                            <label for="f-nome" class="obrigatorio">Nome do fornecedor</label>
+                            <input id="f-nome" type="text" maxlength="200" value="@_m.FornecedorNome" disabled="@Travado" @onchange="e => { _m.FornecedorNome = e.Value?.ToString(); Mudou(); }" />
+                        </div>
+                        <div class="campo col-4">
+                            <label for="f-cnpj" class="obrigatorio">CNPJ do fornecedor</label>
+                            <input id="f-cnpj" type="text" inputmode="numeric" maxlength="18" placeholder="00.000.000/0000-00" value="@_m.FornecedorCnpj" disabled="@Travado"
+                                   @onchange="e => { _m.FornecedorCnpj = Validacoes.FormatarCnpj(e.Value?.ToString()); Mudou(); }" />
+                            @if (!string.IsNullOrWhiteSpace(_m.FornecedorCnpj) && !Validacoes.CnpjValido(_m.FornecedorCnpj))
+                            {
+                                <span class="msg-erro">CNPJ inválido (verifique os dígitos).</span>
+                            }
+                        </div>
+                        <div class="campo col-12">
+                            <label for="f-end" class="obrigatorio">Endereço do fornecedor</label>
+                            <input id="f-end" type="text" maxlength="400" value="@_m.FornecedorEndereco" disabled="@Travado" @onchange="e => { _m.FornecedorEndereco = e.Value?.ToString(); Mudou(); }" />
+                        </div>
+                        <div class="campo col-12">
+                            <label for="f-escopo" class="obrigatorio">Escopo de fornecimento</label>
+                            <textarea id="f-escopo" maxlength="2000" rows="3" disabled="@Travado" @onchange="e => { _m.EscopoFornecimento = e.Value?.ToString(); Mudou(); }">@_m.EscopoFornecimento</textarea>
+                        </div>
+                    </div>
+                </section>
+            }
+
+            <section class="cartao">
+                <h2 class="secao-titulo">Normas@(_m.Tipo == TipoAuditoria.Interna ? ", áreas e processos" : "")</h2>
+                <div class="grade">
+                    <div class="campo col-12">
+                        <span class="rotulo obrigatorio" id="rot-normas">Normas</span>
+                        <SeletorMultiplo Id="normas" Rotulo="Normas" Placeholder="Selecione uma ou mais normas" Opcoes="OpcoesNormas" Selecionados="_m.NormaIds"
+                                         SelecionadosChanged="TrocarNormas" Desabilitado="Travado" AriaDescricao="rot-normas" />
+                    </div>
+                    @if (_m.Tipo == TipoAuditoria.Interna)
+                    {
+                        <div class="campo col-12">
+                            <span class="rotulo obrigatorio" id="rot-areas">Áreas</span>
+                            <SeletorMultiplo Id="areas" Rotulo="Áreas" Placeholder="Selecione uma ou mais áreas" Opcoes="OpcoesAreas" Selecionados="_m.AreaIds"
+                                             SelecionadosChanged="v => { _m.AreaIds = v; Mudou(); }" Desabilitado="Travado" AriaDescricao="rot-areas"
+                                             SemOpcoes="Nenhuma área ativa. Cadastre em Administração › Cadastrar áreas." />
+                        </div>
+                        <div class="campo col-6">
+                            <span class="rotulo" id="rot-macro">Macroprocessos</span>
+                            <SeletorMultiplo Id="macros" Rotulo="Macroprocessos" Placeholder="Selecione (opcional)" Opcoes="OpcoesMacros" Selecionados="_m.MacroprocessoIds"
+                                             SelecionadosChanged="TrocarMacros" Desabilitado="Travado" AriaDescricao="rot-macro" Travados="MacrosTravados" />
+                            <span class="ajuda">Filtra os processos. O macroprocesso de cada processo selecionado é incluído automaticamente.</span>
+                        </div>
+                        <div class="campo col-6">
+                            <span class="rotulo" id="rot-proc">Processos</span>
+                            <SeletorMultiplo Id="processos" Rotulo="Processos" Placeholder="Selecione (opcional)" Opcoes="OpcoesProcessos" Selecionados="_m.ProcessoIds"
+                                             SelecionadosChanged="TrocarProcessos" Desabilitado="Travado" AriaDescricao="rot-proc" />
+                            <span class="ajuda">Os requisitos obrigatórios dos processos são carregados automaticamente.</span>
+                        </div>
+                    }
+                </div>
+            </section>
+
+            <section class="cartao">
+                <div class="cartao-cabecalho">
+                    <h2 class="secao-titulo" style="margin:0;border:0">Requisitos a auditar</h2>
+                    <span class="etiqueta etiqueta-info">@_m.RequisitoIds.Count selecionado(s) · @_obrigatorios.Count obrigatório(s)</span>
+                </div>
+                @if (_avisos.Count > 0)
+                {
+                    <div class="alerta alerta-info" role="status">
+                        <strong>Requisitos atualizados:</strong>
+                        <ul>@foreach (var a in _avisos) { <li>@a</li> }</ul>
+                    </div>
+                }
+                @if (_m.NormaIds.Count == 0)
+                {
+                    <p class="texto-suave">Selecione as normas para escolher os requisitos.</p>
+                }
+                else
+                {
+                    <div class="campo" style="max-width:480px;margin-bottom:.8rem">
+                        <label for="busca-req">Filtrar requisitos</label>
+                        <input id="busca-req" type="search" placeholder="Número ou título" @bind="_buscaReq" @bind:event="oninput" />
+                    </div>
+                    @foreach (var n in _dados.Normas.Where(n => _m.NormaIds.Contains(n.Id)))
+                    {
+                        var reqs = RequisitosDaNorma(n.Id).ToList();
+                        var sel = reqs.Count(r => _m.RequisitoIds.Contains(r.Id));
+                        <div class="grupo-norma">
+                            <header>
+                                <h4>@n.Nome</h4>
+                                <span class="texto-suave pequeno">@sel de @reqs.Count selecionado(s)</span>
+                            </header>
+                            <details open="@(_buscaReq.Length > 0 || sel > 0)">
+                                <summary style="padding:.6rem .9rem;cursor:pointer;font-weight:600">Mostrar / ocultar requisitos</summary>
+                                <div class="lista-requisitos">
+                                    @if (reqs.Count == 0)
+                                    {
+                                        <span class="texto-suave">Nenhum requisito ativo cadastrado para esta norma. Cadastre em Administração › Cadastrar normas e requisitos.</span>
+                                    }
+                                    @foreach (var r in reqs.Where(FiltroReq))
+                                    {
+                                        var obrig = _obrigatorios.TryGetValue(r.Id, out var origem);
+                                        var marcado = _m.RequisitoIds.Contains(r.Id);
+                                        var usado = _emConstatacoes.Contains(r.Id);
+                                        var travado = Travado || obrig || (usado && marcado);
+                                        <label class="marcador @(travado ? "desabilitado" : "") @(r.Codigo.Count(c => c == '.') == 2 ? "nivel-3" : "")">
+                                            <input type="checkbox" checked="@marcado" disabled="@travado" @onchange="() => AlternarRequisito(r.Id)" />
+                                            <span>
+                                                @r.Exibicao
+                                                @if (obrig) { <span class="badge-obrigatorio" title="Obrigatório pelo cadastro do processo">Obrigatório · @string.Join(", ", origem!)</span> }
+                                                @if (!r.Ativo) { <span class="etiqueta etiqueta-inativo">Inativo</span> }
+                                                @if (usado) { <span class="detalhe">Classificado em constatação do relatório.</span> }
+                                            </span>
+                                        </label>
+                                    }
+                                </div>
+                            </details>
+                        </div>
+                    }
+                }
+            </section>
+
+            <section class="cartao">
+                <h2 class="secao-titulo">Equipe</h2>
+                @if (_m.NormaIds.Count == 0)
+                {
+                    <p class="texto-suave">Selecione as normas para ver os auditores habilitados.</p>
+                }
+                <div class="grade">
+                    <div class="campo col-4">
+                        <span class="rotulo obrigatorio" id="rot-lider">Auditor líder</span>
+                        <SeletorMultiplo Id="lider" Unico="true" Rotulo="Auditor líder" Placeholder="Selecione o auditor líder" Opcoes="Candidatos(FuncaoAuditoria.Lider)"
+                                         Selecionados="LiderSet" SelecionadosChanged="TrocarLider" Desabilitado="@(Travado || _m.NormaIds.Count == 0)" AriaDescricao="rot-lider" />
+                        <span class="ajuda">Habilitado como auditor líder em todas as normas selecionadas.</span>
+                    </div>
+                    <div class="campo col-4">
+                        <span class="rotulo" id="rot-aud">Auditores</span>
+                        <SeletorMultiplo Id="auditores" Rotulo="Auditores" Placeholder="Selecione os auditores" Opcoes="Candidatos(FuncaoAuditoria.Auditor)"
+                                         Selecionados="_m.AuditorIds" SelecionadosChanged="v => { _m.AuditorIds = v; Mudou(); }" Desabilitado="@(Travado || _m.NormaIds.Count == 0)" AriaDescricao="rot-aud" />
+                        <span class="ajuda">Habilitados como auditor em ao menos uma norma selecionada.</span>
+                    </div>
+                    <div class="campo col-4">
+                        <span class="rotulo" id="rot-obs">Observadores</span>
+                        <SeletorMultiplo Id="observadores" Rotulo="Observadores" Placeholder="Selecione (opcional)" Opcoes="Candidatos(FuncaoAuditoria.Observador)"
+                                         Selecionados="_m.ObservadorIds" SelecionadosChanged="v => { _m.ObservadorIds = v; Mudou(); }" Desabilitado="@(Travado || _m.NormaIds.Count == 0)" AriaDescricao="rot-obs" />
+                        <span class="ajuda">Habilitados como observador em ao menos uma norma selecionada.</span>
+                    </div>
+                </div>
+                @if (_m.NormaIds.Count > 0)
+                {
+                    <h3 style="margin-top:1.2rem">Cobertura das normas pela equipe</h3>
+                    <ul style="margin:0;padding-left:1.2rem">
+                        @foreach (var n in NormasSelecionadas)
+                        {
+                            var cobrem = Equipe().Where(a => a.Habilitacoes.Any(h => h.NormaId == n.Id && (h.PodeAuditar || h.PodeLiderar))).Select(a => a.Nome).ToList();
+                            <li>
+                                <strong>@n.Nome:</strong>
+                                @if (cobrem.Count > 0) { <span>✔ coberta por @string.Join(", ", cobrem)</span> }
+                                else { <span class="msg-erro">✖ nenhum membro da equipe (líder ou auditores) habilitado como auditor nesta norma</span> }
+                            </li>
+                        }
+                    </ul>
+                    @foreach (var aviso in Incompatibilidades())
+                    {
+                        <div class="alerta alerta-aviso" style="margin-top:.8rem" role="status">@aviso</div>
+                    }
+                }
+
+                <div class="barra-salvar">
+                    <span class="estado @(_sujo ? "sujo" : "")">@(_sujo ? "Alterações não salvas" : "Sem alterações pendentes")</span>
+                    <a class="btn btn-secundario" href="@(Id == null ? "/programacao" : $"/auditorias/{Id}")">Cancelar</a>
+                    <button type="submit" class="btn btn-primario" disabled="@Ocupado"><Icone Nome="salvar" />@(Ocupado ? "Salvando…" : "Salvar programação")</button>
+                </div>
+            </section>
+        </form>
+    }
+</div>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "ano")] private int? AnoQuery { get; set; }
+
+    private DadosFormularioProgramacao? _dados;
+    private ProgramacaoEdicao _m = new();
+    private string _codigo = "";
+    private string? _bloqueio;
+    private bool _temPlano, _temRelatorio, _sujo;
+    private HashSet<int> _emConstatacoes = new();
+    private Dictionary<int, List<string>> _obrigatorios = new();
+    private HashSet<int> _normasOriginais = new(), _processosOriginais = new();
+    private Dictionary<int, List<string>> _obrigatoriosOriginais = new();
+    private readonly List<string> _avisos = new();
+    private string _buscaReq = "";
+
+    private bool Travado => _bloqueio != null;
+    private HashSet<int> LiderSet => _m.LiderId is int l ? new() { l } : new();
+    private IEnumerable<int> ProcessosEfetivos => _m.Tipo == TipoAuditoria.Interna ? _m.ProcessoIds : Enumerable.Empty<int>();
+    private List<NormaInfo> NormasSelecionadas => _dados!.Normas.Where(n => _m.NormaIds.Contains(n.Id)).Select(n => new NormaInfo(n.Id, n.Nome)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Carregar(async () =>
+        {
+            var ator = await ObterAtorAsync();
+            _dados = await Programacao.ObterDadosFormularioAsync(ator, Id);
+            if (Id is int id)
+            {
+                var s = await Programacao.ObterParaEdicaoAsync(ator, id);
+                _m = s.Dados;
+                _codigo = s.Codigo;
+                _bloqueio = s.BloqueioEstrutura;
+                _temPlano = s.TemPlano;
+                _temRelatorio = s.TemRelatorio;
+                _emConstatacoes = s.RequisitosEmConstatacoes;
+                _obrigatoriosOriginais = s.OrigemObrigatorios.ToDictionary(k => k.Key, v => (v.Value ?? "").Split("; ", StringSplitOptions.RemoveEmptyEntries).ToList());
+                _obrigatorios = new(_obrigatoriosOriginais);
+                _normasOriginais = new(_m.NormaIds);
+                _processosOriginais = new(_m.ProcessoIds);
+            }
+            else
+            {
+                _m.Ano = AnoQuery ?? FusoHorario.AnoAtual(Relogio) + 1;
+            }
+        });
+    }
+
+    private void Mudou() => _sujo = true;
+    private void DefinirAno(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var a)) _m.Ano = a; Mudou(); }
+    private void DefinirMes(ChangeEventArgs e) { _m.MesPrevisto = int.TryParse(e.Value?.ToString(), out var m) ? m : 0; Mudou(); }
+
+    // ------------------------------------------------------------ Opções
+
+    private List<OpcaoSelecao> OpcoesNormas => _dados!.Normas.Select(n => new OpcaoSelecao(n.Id, n.Nome, Detalhe: n.Ativo ? null : "Inativa — mantida apenas por já estar nesta auditoria")).ToList();
+    private List<OpcaoSelecao> OpcoesAreas => _dados!.Areas.Select(a => new OpcaoSelecao(a.Id, a.Nome, Detalhe: a.Ativo ? null : "Inativa")).ToList();
+    private List<OpcaoSelecao> OpcoesMacros => _dados!.Macroprocessos.Select(a => new OpcaoSelecao(a.Id, a.Nome, Detalhe: a.Ativo ? null : "Inativo")).ToList();
+    private HashSet<int> MacrosTravados => _dados!.Processos.Where(p => _m.ProcessoIds.Contains(p.Id)).Select(p => p.MacroprocessoId).ToHashSet();
+
+    private List<OpcaoSelecao> OpcoesProcessos
+    {
+        get
+        {
+            var macros = _dados!.Macroprocessos.ToDictionary(m => m.Id, m => m.Nome);
+            return _dados.Processos
+                .Where(p => _m.MacroprocessoIds.Count == 0 || _m.MacroprocessoIds.Contains(p.MacroprocessoId) || _m.ProcessoIds.Contains(p.Id))
+                .OrderBy(p => macros.GetValueOrDefault(p.MacroprocessoId)).ThenBy(p => p.Nome)
+                .Select(p =>
+                {
+                    var comuns = p.NormaIds.Intersect(_m.NormaIds).Count();
+                    return new OpcaoSelecao(p.Id, p.Nome, macros.GetValueOrDefault(p.MacroprocessoId),
+                        Detalhe: _m.NormaIds.Count > 0 && comuns == 0 ? "Sem normas em comum com as selecionadas (não traz requisitos)" : null);
+                }).ToList();
+        }
+    }
+
+    private IEnumerable<RequisitoOpcao> RequisitosDaNorma(int normaId) =>
+        _dados!.Requisitos.Where(r => r.NormaId == normaId && (r.Ativo || _m.RequisitoIds.Contains(r.Id))).OrderBy(r => r.Chave, StringComparer.Ordinal);
+
+    private bool FiltroReq(RequisitoOpcao r)
+    {
+        var t = RegrasCalendario.SemAcento(_buscaReq.Trim());
+        return t.Length == 0 || RegrasCalendario.SemAcento(r.Exibicao).Contains(t);
+    }
+
+    private IEnumerable<AuditorInfo> Equipe() =>
+        _dados!.Auditores.Where(a => a.Id == _m.LiderId || _m.AuditorIds.Contains(a.Id));
+
+    private List<OpcaoSelecao> Candidatos(FuncaoAuditoria funcao)
+    {
+        var normas = NormasSelecionadas;
+        var lista = new List<OpcaoSelecao>();
+        foreach (var a in _dados!.Auditores)
+        {
+            bool selecionado = funcao switch
+            {
+                FuncaoAuditoria.Lider => _m.LiderId == a.Id,
+                FuncaoAuditoria.Auditor => _m.AuditorIds.Contains(a.Id),
+                _ => _m.ObservadorIds.Contains(a.Id)
+            };
+            if (!a.Ativo && !selecionado) continue;
+            string? motivo = null;
+            if (funcao != FuncaoAuditoria.Lider && _m.LiderId == a.Id) motivo = "Já é o auditor líder desta auditoria.";
+            else if (funcao == FuncaoAuditoria.Auditor && _m.ObservadorIds.Contains(a.Id)) motivo = "Já selecionado como observador.";
+            else if (funcao == FuncaoAuditoria.Observador && _m.AuditorIds.Contains(a.Id)) motivo = "Já selecionado como auditor.";
+            else
+            {
+                var c = RegrasHabilitacao.Verificar(a, funcao, normas);
+                if (!c.Compativel) motivo = c.Motivo;
+            }
+            lista.Add(new OpcaoSelecao(a.Id, a.Nome, null, motivo != null, motivo));
+        }
+        return lista.OrderBy(o => o.Desabilitado).ThenBy(o => o.Texto).ToList();
+    }
+
+    private IEnumerable<string> Incompatibilidades()
+    {
+        var normas = NormasSelecionadas;
+        var porId = _dados!.Auditores.ToDictionary(a => a.Id);
+        if (_m.LiderId is int l && porId.TryGetValue(l, out var la) && RegrasHabilitacao.Verificar(la, FuncaoAuditoria.Lider, normas) is { Compativel: false } c1)
+            yield return $"{la.Nome} (auditor líder): {c1.Motivo} Altere o líder ou as normas.";
+        foreach (var id in _m.AuditorIds)
+            if (porId.TryGetValue(id, out var a) && RegrasHabilitacao.Verificar(a, FuncaoAuditoria.Auditor, normas) is { Compativel: false } c2)
+                yield return $"{a.Nome} (auditor): {c2.Motivo}";
+        foreach (var id in _m.ObservadorIds)
+            if (porId.TryGetValue(id, out var a) && RegrasHabilitacao.Verificar(a, FuncaoAuditoria.Observador, normas) is { Compativel: false } c3)
+                yield return $"{a.Nome} (observador): {c3.Motivo}";
+    }
+
+    // ------------------------------------------------------------ Mudanças
+
+    private void TrocarTipo(TipoAuditoria t)
+    {
+        if (_m.Tipo == t) return;
+        _m.Tipo = t;
+        Mudou();
+        RecalcularRequisitos(t == TipoAuditoria.Fornecedor
+            ? "Auditoria de fornecedores não utiliza área, macroprocesso nem processo; esses campos não serão salvos."
+            : null);
+    }
+
+    private void TrocarNormas(HashSet<int> v) { _m.NormaIds = v; Mudou(); RecalcularRequisitos(null); }
+
+    private void TrocarMacros(HashSet<int> v)
+    {
+        _m.MacroprocessoIds = v;
+        var removidos = _dados!.Processos.Where(p => _m.ProcessoIds.Contains(p.Id) && !v.Contains(p.MacroprocessoId)).ToList();
+        foreach (var p in removidos) _m.ProcessoIds.Remove(p.Id);
+        Mudou();
+        RecalcularRequisitos(removidos.Count > 0 ? $"Processos retirados por não pertencerem aos macroprocessos selecionados: {string.Join(", ", removidos.Select(p => p.Nome))}." : null);
+    }
+
+    private void TrocarProcessos(HashSet<int> v)
+    {
+        _m.ProcessoIds = v;
+        foreach (var p in _dados!.Processos.Where(p => v.Contains(p.Id))) _m.MacroprocessoIds.Add(p.MacroprocessoId);
+        Mudou();
+        RecalcularRequisitos(null);
+    }
+
+    private void TrocarLider(HashSet<int> v)
+    {
+        _m.LiderId = v.Count == 0 ? null : v.First();
+        if (_m.LiderId is int l)
+        {
+            if (_m.AuditorIds.Remove(l)) _avisos.Add("O auditor líder foi retirado da lista de auditores (uma pessoa por função).");
+            if (_m.ObservadorIds.Remove(l)) _avisos.Add("O auditor líder foi retirado da lista de observadores (uma pessoa por função).");
+        }
+        Mudou();
+    }
+
+    private void AlternarRequisito(int id)
+    {
+        if (_obrigatorios.ContainsKey(id)) return; // obrigatório: não pode ser retirado
+        if (!_m.RequisitoIds.Remove(id)) _m.RequisitoIds.Add(id);
+        Mudou();
+    }
+
+    /// <summary>Atualiza requisitos obrigatórios conforme normas e processos e avisa sobre as mudanças.</summary>
+    private void RecalcularRequisitos(string? avisoExtra)
+    {
+        _avisos.Clear();
+        if (avisoExtra != null) _avisos.Add(avisoExtra);
+        var processos = ProcessosEfetivos.ToHashSet();
+        var anteriores = _obrigatorios;
+        Dictionary<int, List<string>> novos = Id != null && _normasOriginais.SetEquals(_m.NormaIds) && _processosOriginais.SetEquals(processos)
+            ? new(_obrigatoriosOriginais)
+            : RegrasRequisitos.Obrigatorios(_dados!.Processos.Where(p => processos.Contains(p.Id)), _m.NormaIds);
+        var porId = _dados!.Requisitos.ToDictionary(r => r.Id);
+        string Nome(int id) => porId.TryGetValue(id, out var r) ? r.Codigo : id.ToString();
+
+        var adicionados = novos.Keys.Where(k => !_m.RequisitoIds.Contains(k)).ToList();
+        foreach (var k in adicionados) _m.RequisitoIds.Add(k);
+        // Requisitos que deixaram de ser obrigatórios (processo ou norma retirados) saem da seleção.
+        var deixaram = anteriores.Keys.Where(k => !novos.ContainsKey(k) && _m.RequisitoIds.Contains(k) && !_emConstatacoes.Contains(k)).ToList();
+        foreach (var k in deixaram) _m.RequisitoIds.Remove(k);
+        // Requisitos de normas não selecionadas saem.
+        var foraNorma = _m.RequisitoIds.Where(k => porId.TryGetValue(k, out var r) && !_m.NormaIds.Contains(r.NormaId)).ToList();
+        foreach (var k in foraNorma) _m.RequisitoIds.Remove(k);
+        _obrigatorios = novos;
+
+        if (adicionados.Count > 0) _avisos.Add($"Incluídos como obrigatórios pelos processos: {string.Join(", ", adicionados.Select(Nome))}.");
+        if (deixaram.Count > 0) _avisos.Add($"Retirados por não serem mais obrigatórios (processo ou norma retirados): {string.Join(", ", deixaram.Select(Nome))}.");
+        if (foraNorma.Count > 0) _avisos.Add($"Retirados por pertencerem a normas não selecionadas: {string.Join(", ", foraNorma.Select(Nome).Distinct())}.");
+    }
+
+    // ------------------------------------------------------------ Salvar
+
+    private async Task Salvar()
+    {
+        int novoId = 0;
+        var ok = await Executar(async () => novoId = await Programacao.SalvarAsync(await ObterAtorAsync(), _m));
+        if (ok)
+        {
+            _sujo = false;
+            Notificacoes.Sucesso(Id == null ? "Auditoria programada com sucesso." : "Programação salva com sucesso.");
+            Nav.NavigateTo($"/auditorias/{novoId}");
+        }
+    }
+
+    private async Task ConfirmarSaida(LocationChangingContext ctx)
+    {
+        if (!_sujo) return;
+        if (!await Confirmacao.ConfirmarAsync("Sair sem salvar?", "Há alterações não salvas nesta programação. Deseja sair e descartá-las?", "Sair sem salvar", true))
+            ctx.PreventNavigation();
+    }
+}

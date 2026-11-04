@@ -1,0 +1,16 @@
+@page "/admin"
+@attribute [Authorize(Policy = "Administrador")]
+
+<PageTitle>Administração do sistema — NUCLAUD</PageTitle>
+<PageHeader Titulo="Administração do sistema" Subtitulo="Cadastros básicos, usuários e identidade visual." />
+<div class="conteudo">
+    <div class="cards-admin">
+        <a class="card-link" href="/admin/identidade-visual"><h3>Identidade visual</h3><p class="texto-suave">Logotipo oficial usado nos PDFs.</p></a>
+        <a class="card-link" href="/admin/usuarios"><h3>Cadastrar usuários</h3><p class="texto-suave">Acesso, perfis e vínculo com auditores.</p></a>
+        <a class="card-link" href="/admin/areas"><h3>Cadastrar áreas</h3><p class="texto-suave">Áreas das auditorias internas.</p></a>
+        <a class="card-link" href="/admin/processos"><h3>Macroprocessos e processos</h3><p class="texto-suave">Normas aplicáveis e requisitos obrigatórios.</p></a>
+        <a class="card-link" href="/admin/auditores"><h3>Cadastrar auditores</h3><p class="texto-suave">Habilitações por norma e função.</p></a>
+        <a class="card-link" href="/admin/normas"><h3>Cadastrar normas e requisitos</h3><p class="texto-suave">Normas, edições e requisitos.</p></a>
+        <a class="card-link" href="/admin/historico"><h3>Histórico de alterações</h3><p class="texto-suave">Registro de criações, alterações, conclusões e exclusões.</p></a>
+    </div>
+</div>

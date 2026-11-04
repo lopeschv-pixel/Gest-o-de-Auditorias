@@ -1,0 +1,14 @@
+<span class="etiqueta @(Valor == SituacaoAuditoria.Realizada ? "etiqueta-realizada" : "etiqueta-situacao")">
+    <span aria-hidden="true">@Simbolo</span> @Valor.Texto()
+</span>
+@code {
+    [Parameter] public SituacaoAuditoria Valor { get; set; }
+    private string Simbolo => Valor switch
+    {
+        SituacaoAuditoria.Programada => "○",
+        SituacaoAuditoria.Planejada => "◐",
+        SituacaoAuditoria.RelatorioEmElaboracao => "✎",
+        SituacaoAuditoria.EmRevisao => "↺",
+        _ => "✔"
+    };
+}

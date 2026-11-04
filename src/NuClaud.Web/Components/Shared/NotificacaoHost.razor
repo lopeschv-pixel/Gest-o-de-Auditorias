@@ -1,0 +1,19 @@
+@implements IDisposable
+@inject ServicoNotificacao Servico
+
+<div class="notificacoes" role="status" aria-live="polite">
+    @foreach (var n in Servico.Itens.ToList())
+    {
+        <div class="notificacao @n.Tipo.ToString().ToLowerInvariant()" role="@(n.Tipo == TipoNotificacao.Erro ? "alert" : null)">
+            <span>@(n.Tipo switch { TipoNotificacao.Sucesso => "✔", TipoNotificacao.Erro => "✖", TipoNotificacao.Aviso => "!", _ => "i" })</span>
+            <span>@n.Texto</span>
+            <button type="button" class="fechar" aria-label="Fechar mensagem" @onclick="() => Servico.Remover(n.Id)">×</button>
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => Servico.Mudou += Atualizar;
+    private void Atualizar() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Servico.Mudou -= Atualizar;
+}

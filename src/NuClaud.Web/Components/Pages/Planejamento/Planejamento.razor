@@ -1,0 +1,125 @@
+@page "/planejamento"
+@attribute [Authorize]
+@inherits PaginaBase
+@inject ConsultasServico Consultas
+@inject AuditorServico AuditoresSrv
+@inject NormaServico NormasSrv
+@inject IRelogio Relogio
+
+<PageTitle>Planejamento de auditores — NUCLAUD</PageTitle>
+<PageHeader Titulo="Planejamento de auditores" Subtitulo="@(Ator?.EhAdministrador == true ? "Distribuição das designações, concentração por mês e conflitos de agenda." : "Suas designações no ano selecionado.")" />
+
+<div class="conteudo">
+    @if (ErroCarga != null) { <div class="alerta alerta-erro">@ErroCarga</div> }
+    <section class="cartao">
+        <div class="filtros" style="grid-template-columns: 160px minmax(220px,1fr) minmax(220px,1fr)">
+            <div class="campo">
+                <label for="ano">Ano</label>
+                <select id="ano" value="@_ano" @onchange="e => Trocar(() => _ano = int.Parse(e.Value!.ToString()!))">
+                    @foreach (var a in _anos) { <option value="@a">@a</option> }
+                </select>
+            </div>
+            @if (Ator?.EhAdministrador == true)
+            {
+                <div class="campo">
+                    <label for="auditor">Auditor</label>
+                    <select id="auditor" value="@(_auditorId?.ToString() ?? "")" @onchange="e => Trocar(() => _auditorId = int.TryParse(e.Value?.ToString(), out var v) ? v : null)">
+                        <option value="">Todos</option>
+                        @foreach (var a in _auditores) { <option value="@a.Id">@a.NomeCompleto@(a.Ativo ? "" : " (inativo)")</option> }
+                    </select>
+                </div>
+            }
+            <div class="campo">
+                <label for="norma">Norma</label>
+                <select id="norma" value="@(_normaId?.ToString() ?? "")" @onchange="e => Trocar(() => _normaId = int.TryParse(e.Value?.ToString(), out var v) ? v : null)">
+                    <option value="">Todas</option>
+                    @foreach (var n in _normas) { <option value="@n.Id">@n.Nome</option> }
+                </select>
+            </div>
+        </div>
+        @if (Ator?.EhAdministrador == true)
+        {
+            <p class="texto-suave pequeno" style="margin:.8rem 0 0">Concentração: destaca auditores com 2 ou mais designações (líder ou auditor) no mesmo mês. Conflitos: períodos de planos diferentes que se sobrepõem no mesmo dia.</p>
+        }
+    </section>
+
+    @if (_dados.Count == 0)
+    {
+        <div class="cartao"><p class="texto-suave">@(Ator?.AuditorId == null && Ator?.EhAdministrador != true ? "Seu usuário não está vinculado a um cadastro de auditor." : "Nenhuma designação encontrada para os filtros.")</p></div>
+    }
+    @foreach (var p in _dados)
+    {
+        <section class="cartao" aria-labelledby="aud-@p.AuditorId">
+            <div class="cartao-cabecalho">
+                <h2 id="aud-@p.AuditorId">@p.Nome @if (!p.Ativo) { <span class="etiqueta etiqueta-inativo">Inativo</span> }</h2>
+                <div class="chips">
+                    <span class="etiqueta etiqueta-info">@p.Designacoes.Count designação(ões)</span>
+                    <span class="etiqueta etiqueta-info">@p.Designacoes.Count(d => d.Funcao == FuncaoAuditoria.Lider) como líder</span>
+                    @if (p.MaiorConcentracaoMensal >= 2)
+                    {
+                        <span class="etiqueta etiqueta-aviso">Concentração: @string.Join(", ", p.PorMes.Where(x => x.Value >= 2).Select(x => $"{Rotulos.NomeMes(x.Key)} ({x.Value})"))</span>
+                    }
+                    @if (p.Conflitos.Count > 0) { <span class="etiqueta etiqueta-aviso" style="background:var(--perigo-fundo);color:var(--perigo)">@p.Conflitos.Count conflito(s) de agenda</span> }
+                </div>
+            </div>
+            @foreach (var c in p.Conflitos)
+            {
+                <div class="alerta alerta-erro" role="note">Conflito de agenda: @c.Descricao.</div>
+            }
+            @if (p.Designacoes.Count == 0)
+            {
+                <p class="texto-suave">Sem designações no ano.</p>
+            }
+            else
+            {
+                <div class="tabela-wrap">
+                    <table class="tabela">
+                        <thead><tr><th>Código</th><th>Mês previsto</th><th>Datas do plano</th><th>Função</th><th>Normas</th><th>Área ou fornecedor</th><th>Situação</th></tr></thead>
+                        <tbody>
+                            @foreach (var d in p.Designacoes)
+                            {
+                                <tr>
+                                    <td><a href="/auditorias/@d.AuditoriaId"><strong>@d.Codigo</strong></a></td>
+                                    <td>@Rotulos.NomeMes(d.Mes)</td>
+                                    <td>@if (d.Periodos.Count == 0) { <span class="texto-suave">A definir</span> } else { foreach (var per in d.Periodos) { <div style="white-space:nowrap">@Rotulos.Periodo(per.Data, per.HoraInicio, per.HoraFim)</div> } }</td>
+                                    <td><span class="etiqueta @(d.Funcao == FuncaoAuditoria.Lider ? "etiqueta-admin" : d.Funcao == FuncaoAuditoria.Observador ? "etiqueta-inativo" : "etiqueta-info")">@d.Funcao.Texto()</span></td>
+                                    <td>@string.Join(", ", d.Normas)</td>
+                                    <td>@(d.Tipo == TipoAuditoria.Fornecedor ? $"Fornecedor: {d.Identificacao}" : d.Identificacao)</td>
+                                    <td><Situacao Valor="d.Situacao" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private int _ano;
+    private List<int> _anos = new();
+    private int? _auditorId, _normaId;
+    private List<Auditor> _auditores = new();
+    private List<Norma> _normas = new();
+    private List<PlanejamentoAuditor> _dados = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Carregar(async () =>
+        {
+            var ator = await ObterAtorAsync();
+            var atual = FusoHorario.AnoAtual(Relogio);
+            var anos = await Consultas.AnosDisponiveisAsync();
+            _anos = anos.Append(atual).Append(atual + 1).Distinct().OrderBy(x => x).ToList();
+            _ano = anos.Where(a => a >= atual).DefaultIfEmpty(atual).Min();
+            if (ator.EhAdministrador) _auditores = await AuditoresSrv.ListarAsync();
+            _normas = await NormasSrv.ListarAsync();
+            await Recarregar();
+        });
+    }
+
+    private async Task Recarregar() => _dados = await Consultas.PlanejamentoAsync(await ObterAtorAsync(), _ano, _auditorId, _normaId);
+
+    private async Task Trocar(Action a) { a(); await Carregar(Recarregar); }
+}

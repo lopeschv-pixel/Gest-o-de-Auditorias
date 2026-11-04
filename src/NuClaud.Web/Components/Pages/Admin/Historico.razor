@@ -1,0 +1,49 @@
+@page "/admin/historico"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject ConsultasServico Consultas
+
+<PageTitle>Histórico de alterações — NUCLAUD</PageTitle>
+<PageHeader Titulo="Histórico de alterações" Subtitulo="Últimos 300 registros. Datas e horas no horário de Brasília.">
+    <Migalhas><a href="/admin">Administração do sistema</a> › Histórico</Migalhas>
+</PageHeader>
+<div class="conteudo">
+    @if (ErroCarga != null) { <div class="alerta alerta-erro">@ErroCarga</div> }
+    <div class="cartao">
+        <div class="campo" style="max-width:320px">
+            <label for="ent">Tipo de registro</label>
+            <select id="ent" value="@_entidade" @onchange="Trocar">
+                <option value="">Todos</option>
+                @foreach (var e in new[] { "Auditoria", "Plano", "Relatorio", "Usuario", "Area", "Norma", "Requisito", "Auditor", "Macroprocesso", "Processo", "IdentidadeVisual" })
+                {
+                    <option value="@e">@e</option>
+                }
+            </select>
+        </div>
+    </div>
+    <div class="tabela-wrap">
+        <table class="tabela">
+            <thead><tr><th>Data e hora</th><th>Usuário</th><th>Registro</th><th>Ação</th><th>Resumo</th><th>Detalhes</th></tr></thead>
+            <tbody>
+                @foreach (var h in _lista)
+                {
+                    <tr>
+                        <td style="white-space:nowrap">@FusoHorario.Formatar(h.DataHoraUtc)</td>
+                        <td>@h.UsuarioNome</td>
+                        <td>@h.Entidade #@h.EntidadeId</td>
+                        <td>@h.Acao</td>
+                        <td>@h.Resumo</td>
+                        <td>@if (h.DadosJson != null) { <details><summary>Ver</summary><pre style="white-space:pre-wrap;max-width:420px;font-size:.8rem">@h.DadosJson</pre></details> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+@code {
+    private List<HistoricoAlteracao> _lista = new();
+    private string _entidade = "";
+    protected override async Task OnInitializedAsync() => await Carregar(Recarregar);
+    private async Task Recarregar() => _lista = await Consultas.HistoricoAsync(await ObterAtorAsync(), _entidade, null);
+    private async Task Trocar(ChangeEventArgs e) { _entidade = e.Value?.ToString() ?? ""; await Carregar(Recarregar); }
+}

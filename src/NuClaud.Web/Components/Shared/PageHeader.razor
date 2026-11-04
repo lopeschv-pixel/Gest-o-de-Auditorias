@@ -1,0 +1,16 @@
+<header class="topo">
+    <div class="topo-conteudo">
+        <div>
+            @if (Migalhas != null) { <div class="migalhas">@Migalhas</div> }
+            <h1 tabindex="-1">@Titulo</h1>
+            @if (!string.IsNullOrWhiteSpace(Subtitulo)) { <p class="subtitulo">@Subtitulo</p> }
+        </div>
+        @if (ChildContent != null) { <div class="acoes-topo">@ChildContent</div> }
+    </div>
+</header>
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public string? Subtitulo { get; set; }
+    [Parameter] public RenderFragment? Migalhas { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

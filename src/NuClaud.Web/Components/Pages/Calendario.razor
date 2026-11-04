@@ -1,0 +1,225 @@
+@page "/calendario"
+@attribute [Authorize]
+@inherits PaginaBase
+@inject ConsultasServico Consultas
+@inject NormaServico NormasSrv
+@inject ProgramacaoServico Programacao
+@inject IRelogio Relogio
+
+<PageTitle>Calendário — NUCLAUD</PageTitle>
+
+<PageHeader Titulo="Calendário de auditorias" Subtitulo="Auditorias programadas por mês previsto. Clique em uma auditoria para ver as ações disponíveis.">
+    <a class="btn btn-destaque" href="@UrlPdf" target="_blank" rel="noopener"><Icone Nome="pdf" />Gerar PDF do programa</a>
+</PageHeader>
+
+<div class="conteudo">
+    @if (ErroCarga != null)
+    {
+        <div class="alerta alerta-erro" role="alert">@ErroCarga</div>
+    }
+    else
+    {
+        <section class="cartao" aria-label="Filtros">
+            <div class="filtros">
+                <div class="campo">
+                    <label for="f-ano">Ano</label>
+                    <select id="f-ano" value="@_ano" @onchange="TrocarAno">
+                        @foreach (var a in _anos) { <option value="@a">@a</option> }
+                    </select>
+                </div>
+                <div class="campo">
+                    <span class="rotulo" id="rot-normas">Normas</span>
+                    <SeletorMultiplo Id="f-normas" Rotulo="Normas" Placeholder="Todas" Opcoes="_opcoesNormas" Selecionados="_normas"
+                                     SelecionadosChanged="TrocarNormas" AriaDescricao="rot-normas" />
+                    @if (_normas.Count > 0)
+                    {
+                        <button type="button" class="btn btn-secundario btn-pequeno" style="align-self:flex-start" @onclick="Todas">Mostrar todas</button>
+                    }
+                </div>
+                <div class="campo">
+                    <label for="f-busca">Buscar</label>
+                    <input id="f-busca" type="search" placeholder="Código, área, fornecedor ou auditor" value="@_busca" @oninput="Buscar" />
+                </div>
+                <div class="campo">
+                    <span class="texto-suave pequeno" aria-live="polite">@_lista.Count auditoria(s)</span>
+                </div>
+            </div>
+            <ul class="legenda" aria-label="Legenda de cores">
+                <li><span class="amostra cor-Azul"></span>ISO 9001</li>
+                <li><span class="amostra cor-Verde"></span>ISO 14001 / ISO 45001</li>
+                <li><span class="amostra cor-Laranja"></span>ANSN 1.16 / Secretaria Naval</li>
+                <li><span class="amostra cor-Amarelo"></span>ASME III</li>
+                <li><span class="amostra cor-Cinza"></span>Realizada (relatório concluído)</li>
+                <li><span class="amostra cor-Neutro"></span>Outras normas</li>
+            </ul>
+            <p class="texto-suave pequeno" style="margin:.5rem 0 0">Com várias normas, prevalece: ASME III, depois ANSN 1.16/Secretaria Naval, ISO 14001/45001 e ISO 9001. A situação também é indicada em texto em cada cartão.</p>
+        </section>
+
+        @if (_carregando)
+        {
+            <p class="carregando">Carregando…</p>
+        }
+        else
+        {
+            <div class="meses">
+                @for (int m = 1; m <= 12; m++)
+                {
+                    var mes = m;
+                    var itens = _lista.Where(a => a.MesPrevisto == mes).ToList();
+                    <section class="mes" aria-labelledby="mes-@mes">
+                        <header><h2 id="mes-@mes">@Rotulos.NomeMes(mes)</h2><span class="texto-suave pequeno">@itens.Count</span></header>
+                        <div class="itens">
+                            @if (itens.Count == 0) { <span class="vazio-mes">Sem auditorias.</span> }
+                            @foreach (var a in itens)
+                            {
+                                var cor = RegrasCalendario.Cor(a.Situacao, a.Normas.Select(n => n.GrupoCor));
+                                <button type="button" class="cartao-aud cor-@cor" @onclick="() => Abrir(a)" aria-label="@($"{a.Codigo}, {a.Situacao.Texto()}. Abrir ações")">
+                                    <span class="linha1">
+                                        <span class="codigo">@a.Codigo</span>
+                                        <span class="icone-situacao">@a.Situacao.Texto()</span>
+                                    </span>
+                                    <span class="ident" style="display:block">@(a.Tipo == TipoAuditoria.Interna ? $"Áreas: {ProgramacaoServico.Identificacao(a)}" : $"Fornecedor: {a.FornecedorNome}")</span>
+                                    <span class="meta" style="display:block">Normas: @string.Join(", ", a.Normas.Select(n => n.NomeNorma))</span>
+                                    <span class="meta" style="display:block">Auditor líder: @(a.Lider?.NomeAuditor ?? "—")</span>
+                                    @if (a.Plano?.Periodos.Count > 0)
+                                    {
+                                        <span class="meta" style="display:block">Datas: @string.Join(", ", a.Plano.Periodos.Select(p => p.Data).Distinct().Select(d => d.ToString("dd/MM")))</span>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    </section>
+                }
+            </div>
+        }
+    }
+</div>
+
+@if (_selecionada is { } s && Ator is { } ator)
+{
+    <Dialogo Titulo="@s.Codigo" AoFechar="() => _selecionada = null">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <dl class="lista-def" style="margin-bottom:1rem">
+                <dt>Tipo</dt><dd>@(s.Tipo == TipoAuditoria.Interna ? "Interna" : "Fornecedores")</dd>
+                <dt>@(s.Tipo == TipoAuditoria.Interna ? "Áreas" : "Fornecedor")</dt><dd>@(s.Tipo == TipoAuditoria.Interna ? ProgramacaoServico.Identificacao(s) : s.FornecedorNome)</dd>
+                <dt>Mês previsto</dt><dd>@Rotulos.NomeMes(s.MesPrevisto)/@s.Ano</dd>
+                <dt>Normas</dt><dd>@string.Join(", ", s.Normas.Select(n => n.NomeNorma))</dd>
+                <dt>Auditor líder</dt><dd>@(s.Lider?.NomeAuditor ?? "—")</dd>
+                <dt>Situação</dt><dd><Situacao Valor="s.Situacao" /></dd>
+            </dl>
+            <div class="acoes-dialogo">
+                <a class="btn btn-secundario" href="/auditorias/@s.Id"><Icone Nome="ver" />Visualizar programação</a>
+                @if (ator.EhAdministrador)
+                {
+                    <a class="btn btn-secundario" href="/programacao/@s.Id/editar"><Icone Nome="editar" />Editar programação</a>
+                }
+                @if (Permissoes.PodeEditarPlano(ator, s))
+                {
+                    <a class="btn btn-primario" href="/auditorias/@s.Id/plano"><Icone Nome="editar" />@(s.Plano == null ? "Gerar plano" : "Editar plano")</a>
+                }
+                else if (s.Plano != null)
+                {
+                    <a class="btn btn-secundario" href="/auditorias/@s.Id/plano"><Icone Nome="ver" />Visualizar plano</a>
+                }
+                @if (s.Plano != null)
+                {
+                    <a class="btn btn-secundario" href="/pdf/plano/@s.Id" target="_blank" rel="noopener"><Icone Nome="pdf" />Baixar plano em PDF</a>
+                }
+                @if (s.Plano != null && (Permissoes.PodeEditarRelatorio(ator, s) || s.Relatorio != null))
+                {
+                    <a class="btn @(Permissoes.PodeEditarRelatorio(ator, s) ? "btn-primario" : "btn-secundario")" href="/auditorias/@s.Id/relatorio">
+                        <Icone Nome="@(Permissoes.PodeEditarRelatorio(ator, s) ? "editar" : "ver")" />
+                        @(s.Relatorio == null ? "Gerar relatório" : Permissoes.PodeEditarRelatorio(ator, s) ? "Editar relatório" : "Visualizar relatório")
+                    </a>
+                }
+                @if (s.Relatorio != null)
+                {
+                    <a class="btn btn-secundario" href="/pdf/relatorio/@s.Id" target="_blank" rel="noopener"><Icone Nome="pdf" />Baixar relatório em PDF</a>
+                }
+                @if (s.Plano == null && Permissoes.PodeEditarPlano(ator, s))
+                {
+                    <p class="texto-suave pequeno">O relatório pode ser gerado depois que o plano for salvo.</p>
+                }
+                @if (ator.EhAdministrador)
+                {
+                    <button type="button" class="btn btn-perigo" @onclick="() => Excluir(s)"><Icone Nome="excluir" />Excluir programação</button>
+                }
+            </div>
+        </Corpo>
+    </Dialogo>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "senha")] private string? Senha { get; set; }
+    private List<int> _anos = new();
+    private int _ano;
+    private HashSet<int> _normas = new();
+    private string _busca = "";
+    private List<OpcaoSelecao> _opcoesNormas = new();
+    private List<Auditoria> _lista = new();
+    private Auditoria? _selecionada;
+    private bool _carregando = true;
+    private CancellationTokenSource? _atraso;
+
+    private string UrlPdf =>
+        $"/pdf/programa?ano={_ano}&normas={string.Join(',', _normas)}&busca={Uri.EscapeDataString(_busca)}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Carregar(async () =>
+        {
+            await ObterAtorAsync();
+            var atual = FusoHorario.AnoAtual(Relogio);
+            var anos = await Consultas.AnosDisponiveisAsync();
+            _anos = anos.Append(atual).Append(atual + 1).Distinct().OrderBy(x => x).ToList();
+            _ano = anos.Where(a => a >= atual).DefaultIfEmpty(atual).Min();
+            _opcoesNormas = (await NormasSrv.ListarAsync()).Select(n => new OpcaoSelecao(n.Id, n.Nome, Detalhe: n.Ativo ? null : "Inativa")).ToList();
+            await Atualizar();
+        });
+        if (Senha == "alterada") Notificacoes.Sucesso("Senha alterada com sucesso.");
+    }
+
+    private async Task Atualizar()
+    {
+        _carregando = true;
+        await Carregar(async () =>
+            _lista = await Consultas.CalendarioAsync(await ObterAtorAsync(), new FiltroCalendario { Ano = _ano, NormaIds = _normas, Busca = _busca }));
+        _carregando = false;
+    }
+
+    private async Task TrocarAno(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var a)) { _ano = a; await Atualizar(); }
+    }
+
+    private async Task TrocarNormas(HashSet<int> n) { _normas = n; await Atualizar(); }
+    private async Task Todas() { _normas = new(); await Atualizar(); }
+
+    private async Task Buscar(ChangeEventArgs e)
+    {
+        _busca = e.Value?.ToString() ?? "";
+        _atraso?.Cancel();
+        _atraso = new CancellationTokenSource();
+        var token = _atraso.Token;
+        try { await Task.Delay(300, token); } catch (TaskCanceledException) { return; }
+        await Atualizar();
+    }
+
+    private void Abrir(Auditoria a) { Erros.Clear(); _selecionada = a; }
+
+    private async Task Excluir(Auditoria a)
+    {
+        var itens = new List<string>();
+        if (a.Plano != null) itens.Add("O plano de auditoria também será excluído.");
+        if (a.Relatorio != null) itens.Add($"O relatório ({a.Relatorio.Situacao.Texto().ToLowerInvariant()}) e suas constatações também serão excluídos.");
+        itens.Add("Um retrato dos dados ficará registrado no histórico de alterações.");
+        if (!await Confirmacao.ConfirmarAsync("Excluir programação", $"Deseja excluir a programação {a.Codigo}? Esta ação não pode ser desfeita.", "Excluir programação", true, itens))
+            return;
+        if (await Executar(async () => await Programacao.ExcluirAsync(await ObterAtorAsync(), a.Id), $"Programação {a.Codigo} excluída."))
+        {
+            _selecionada = null;
+            await Atualizar();
+        }
+    }
+}

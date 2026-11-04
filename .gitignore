@@ -1,0 +1,18 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+TestResults/
+publish/
+*.log
+# Segredos e configurações locais (nunca versionar)
+appsettings.*.local.json
+appsettings.Local.json
+.env
+.env.*
+!.env.exemplo
+.devcontainer/.env
+chaves/

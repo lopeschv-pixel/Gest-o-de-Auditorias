@@ -1,0 +1,161 @@
+@page "/auditorias/{Id:int}"
+@attribute [Authorize]
+@inherits PaginaBase
+@inject ProgramacaoServico Programacao
+@inject ConsultasServico Consultas
+
+<PageTitle>@(_a?.Codigo ?? "Auditoria") — NUCLAUD</PageTitle>
+<PageHeader Titulo="@(_a == null ? "Auditoria" : $"Auditoria {_a.Codigo}")" Subtitulo="Visualização da programação">
+    <Migalhas><a href="/calendario">Calendário</a> › @(_a?.Codigo)</Migalhas>
+    <ChildContent>
+        @if (_a != null && Ator != null)
+        {
+            @if (Ator.EhAdministrador)
+            {
+                <a class="btn btn-claro" href="/programacao/@_a.Id/editar"><Icone Nome="editar" />Editar programação</a>
+            }
+            @if (Permissoes.PodeEditarPlano(Ator, _a) || _a.Plano != null)
+            {
+                <a class="btn btn-claro" href="/auditorias/@_a.Id/plano"><Icone Nome="@(Permissoes.PodeEditarPlano(Ator, _a) ? "editar" : "ver")" />@(_a.Plano == null ? "Gerar plano" : Permissoes.PodeEditarPlano(Ator, _a) ? "Editar plano" : "Visualizar plano")</a>
+            }
+            @if (_a.Plano != null && (Permissoes.PodeEditarRelatorio(Ator, _a) || _a.Relatorio != null))
+            {
+                <a class="btn btn-claro" href="/auditorias/@_a.Id/relatorio"><Icone Nome="@(Permissoes.PodeEditarRelatorio(Ator, _a) ? "editar" : "ver")" />@(_a.Relatorio == null ? "Gerar relatório" : Permissoes.PodeEditarRelatorio(Ator, _a) ? "Editar relatório" : "Visualizar relatório")</a>
+            }
+        }
+    </ChildContent>
+</PageHeader>
+
+<div class="conteudo">
+    @if (ErroCarga != null)
+    {
+        <div class="alerta alerta-erro" role="alert">@ErroCarga</div>
+    }
+    else if (_a == null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        <ListaErros Erros="Erros" />
+        <div class="cartao">
+            <div class="cartao-cabecalho">
+                <h2>Programação</h2>
+                <div class="linha-acoes">
+                    <Situacao Valor="_a.Situacao" />
+                    @if (_a.Plano != null) { <a class="btn btn-secundario btn-pequeno" href="/pdf/plano/@_a.Id" target="_blank" rel="noopener"><Icone Nome="pdf" />Plano em PDF</a> }
+                    @if (_a.Relatorio != null) { <a class="btn btn-secundario btn-pequeno" href="/pdf/relatorio/@_a.Id" target="_blank" rel="noopener"><Icone Nome="pdf" />Relatório em PDF</a> }
+                </div>
+            </div>
+            <dl class="lista-def">
+                <dt>Código</dt><dd><strong>@_a.Codigo</strong></dd>
+                <dt>Tipo</dt><dd>@(_a.Tipo == TipoAuditoria.Interna ? "Interna" : "Fornecedores")</dd>
+                <dt>Mês previsto</dt><dd>@Rotulos.NomeMes(_a.MesPrevisto) de @_a.Ano</dd>
+                <dt>Normas</dt><dd>@string.Join(", ", _a.Normas.Select(n => n.NomeNorma))</dd>
+                @if (_a.Tipo == TipoAuditoria.Interna)
+                {
+                    <dt>Áreas</dt><dd>@Lista(_a.Areas.Select(x => x.NomeArea))</dd>
+                    <dt>Macroprocessos</dt><dd>@Lista(_a.Macroprocessos.Select(x => x.NomeMacroprocesso))</dd>
+                    <dt>Processos</dt><dd>@Lista(_a.Processos.Select(x => $"{x.NomeProcesso} ({x.NomeMacroprocesso})"))</dd>
+                }
+                else
+                {
+                    <dt>Fornecedor</dt><dd>@_a.FornecedorNome</dd>
+                    <dt>CNPJ</dt><dd>@_a.FornecedorCnpj</dd>
+                    <dt>Endereço</dt><dd>@_a.FornecedorEndereco</dd>
+                    <dt>Escopo de fornecimento</dt><dd style="white-space:pre-wrap">@_a.EscopoFornecimento</dd>
+                }
+                <dt>Auditor líder</dt><dd>@Lista(_a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Lider).Select(p => p.NomeAuditor))</dd>
+                <dt>Auditores</dt><dd>@Lista(_a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Auditor).Select(p => p.NomeAuditor))</dd>
+                <dt>Observadores</dt><dd>@Lista(_a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Observador).Select(p => p.NomeAuditor))</dd>
+                @if (_a.Plano?.Periodos.Count > 0)
+                {
+                    <dt>Datas e horários</dt>
+                    <dd>@foreach (var p in _a.Plano.Periodos) { <div>@Rotulos.Periodo(p.Data, p.HoraInicio, p.HoraFim)</div> }</dd>
+                }
+                <dt>Programada por</dt><dd>@_a.CriadoPor em @FusoHorario.Formatar(_a.CriadoEmUtc)</dd>
+                @if (_a.AlteradoEmUtc != null) { <dt>Última alteração</dt><dd>@_a.AlteradoPor em @FusoHorario.Formatar(_a.AlteradoEmUtc)</dd> }
+                @if (_a.Relatorio?.ConcluidoEmUtc != null) { <dt>Relatório concluído</dt><dd>@_a.Relatorio.ConcluidoPor em @FusoHorario.Formatar(_a.Relatorio.ConcluidoEmUtc)</dd> }
+            </dl>
+        </div>
+
+        <div class="cartao">
+            <h2>Requisitos (@_a.Requisitos.Count)</h2>
+            @if (_a.Requisitos.Count == 0) { <p class="texto-suave">Nenhum requisito definido.</p> }
+            else
+            {
+                <div class="tabela-wrap">
+                    <table class="tabela">
+                        <thead><tr><th>Norma</th><th>Requisito</th><th>Origem</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _a.Requisitos)
+                            {
+                                <tr>
+                                    <td>@r.NomeNorma</td>
+                                    <td>@OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)</td>
+                                    <td>@(r.Obrigatorio ? $"Obrigatório — {r.Origem}" : "Adicional")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="cartao">
+            <h2>Histórico desta auditoria</h2>
+            @if (_historico.Count == 0) { <p class="texto-suave">Sem registros.</p> }
+            else
+            {
+                <div class="tabela-wrap">
+                    <table class="tabela">
+                        <thead><tr><th>Data e hora</th><th>Usuário</th><th>Ação</th><th>Resumo</th></tr></thead>
+                        <tbody>
+                            @foreach (var h in _historico)
+                            {
+                                <tr><td style="white-space:nowrap">@FusoHorario.Formatar(h.DataHoraUtc)</td><td>@h.UsuarioNome</td><td>@h.Acao</td><td>@h.Resumo</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        @if (Ator?.EhAdministrador == true)
+        {
+            <div class="linha-acoes fim">
+                <button type="button" class="btn btn-perigo" @onclick="Excluir"><Icone Nome="excluir" />Excluir programação</button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Auditoria? _a;
+    private List<HistoricoAlteracao> _historico = new();
+
+    private static string Lista(IEnumerable<string> l) { var x = l.ToList(); return x.Count == 0 ? "—" : string.Join(", ", x); }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Carregar(async () =>
+        {
+            var ator = await ObterAtorAsync();
+            _a = await Programacao.ObterDetalheAsync(ator, Id);
+            _historico = await Consultas.HistoricoAuditoriaAsync(ator, _a);
+        });
+    }
+
+    private async Task Excluir()
+    {
+        if (_a == null) return;
+        var itens = new List<string>();
+        if (_a.Plano != null) itens.Add("O plano de auditoria também será excluído.");
+        if (_a.Relatorio != null) itens.Add("O relatório e suas constatações também serão excluídos.");
+        itens.Add("Um retrato dos dados ficará registrado no histórico de alterações.");
+        if (!await Confirmacao.ConfirmarAsync("Excluir programação", $"Deseja excluir a programação {_a.Codigo}? Esta ação não pode ser desfeita.", "Excluir programação", true, itens)) return;
+        if (await Executar(async () => await Programacao.ExcluirAsync(await ObterAtorAsync(), _a.Id), $"Programação {_a.Codigo} excluída."))
+            Nav.NavigateTo("/programacao");
+    }
+}

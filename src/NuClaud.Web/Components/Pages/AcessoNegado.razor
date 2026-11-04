@@ -1,0 +1,11 @@
+@page "/acesso-negado"
+@attribute [Authorize]
+
+<PageTitle>Acesso negado — NUCLAUD</PageTitle>
+<PageHeader Titulo="Acesso negado" />
+<div class="conteudo">
+    <div class="cartao">
+        <div class="alerta alerta-aviso" role="alert">Você não tem permissão para acessar esta página. As permissões são definidas pelo administrador do sistema.</div>
+        <a class="btn btn-primario" href="/calendario">Ir para o calendário</a>
+    </div>
+</div>

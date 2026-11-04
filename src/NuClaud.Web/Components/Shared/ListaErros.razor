@@ -1,0 +1,11 @@
+@if (Erros is { Count: > 0 })
+{
+    <div class="alerta alerta-erro" role="alert" tabindex="-1">
+        <strong>@(Titulo ?? (Erros.Count == 1 ? "Não foi possível salvar:" : "Corrija os itens abaixo:"))</strong>
+        <ul>@foreach (var e in Erros) { <li>@e</li> }</ul>
+    </div>
+}
+@code {
+    [Parameter] public IReadOnlyList<string>? Erros { get; set; }
+    [Parameter] public string? Titulo { get; set; }
+}

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NuClaud.Core/NuClaud.Core.csproj" />
+    <Project Path="src/NuClaud.Web/NuClaud.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NuClaud.Tests/NuClaud.Tests.csproj" />
+  </Folder>
+</Solution>

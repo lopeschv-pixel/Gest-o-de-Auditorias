@@ -1,0 +1,490 @@
+@page "/auditorias/{Id:int}/relatorio"
+@attribute [Authorize]
+@inherits PaginaBase
+@inject ProgramacaoServico Programacao
+@inject RelatorioServico Relatorios
+
+<PageTitle>Relatório @(_a?.Codigo) — NUCLAUD</PageTitle>
+<PageHeader Titulo="@(_a == null ? "Relatório de Auditoria" : Core.Pdf.PdfDocumentos.TituloRelatorio(_a.Tipo))" Subtitulo="@(_a?.Codigo)">
+    <Migalhas><a href="/calendario">Calendário</a> › <a href="/auditorias/@Id">@(_a?.Codigo)</a> › Relatório</Migalhas>
+    <ChildContent>
+        @if (_a?.Relatorio != null)
+        {
+            <a class="btn btn-claro" href="/pdf/relatorio/@Id" target="_blank" rel="noopener"><Icone Nome="pdf" />Baixar relatório em PDF</a>
+        }
+    </ChildContent>
+</PageHeader>
+
+<NavigationLock ConfirmExternalNavigation="_sujo" OnBeforeInternalNavigation="ConfirmarSaida" />
+
+<div class="conteudo">
+    @if (ErroCarga != null)
+    {
+        <div class="alerta alerta-erro" role="alert">@ErroCarga</div>
+    }
+    else if (_a == null || Ator == null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else if (_a.Relatorio == null)
+    {
+        <ListaErros Erros="Erros" />
+        <div class="cartao">
+            <h2>Relatório ainda não gerado</h2>
+            @if (_a.Plano == null)
+            {
+                <p>O relatório é criado a partir do plano salvo. Salve o plano desta auditoria primeiro.</p>
+                <a class="btn btn-primario" href="/auditorias/@Id/plano">Ir para o plano</a>
+            }
+            else if (Permissoes.PodeEditarRelatorio(Ator, _a))
+            {
+                <p>O relatório herdará os dados da programação e do plano (datas, normas, requisitos e equipe). Após o início, a estrutura da programação fica bloqueada.</p>
+                <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="Gerar"><Icone Nome="mais" />Gerar relatório</button>
+            }
+            else
+            {
+                <p>Somente o auditor líder designado ou um administrador pode gerar o relatório.</p>
+            }
+        </div>
+    }
+    else
+    {
+        var rel = _a.Relatorio;
+        <ListaErros Erros="Erros" />
+        @if (_pendentes.Count > 0)
+        {
+            <div class="alerta alerta-erro" role="alert" tabindex="-1">
+                <strong>O relatório não pode ser concluído: há requisitos sem classificação de Conformidade ou Não conformidade.</strong>
+                <ul>@foreach (var p in _pendentes) { <li>@p.Exibicao</li> }</ul>
+                <span>Os dados preenchidos foram salvos. Observação e Oportunidade de melhoria não substituem essa classificação.</span>
+            </div>
+        }
+        @if (_bloqueiosConclusao.Count > 0)
+        {
+            <div class="alerta alerta-aviso" role="alert"><ul>@foreach (var b in _bloqueiosConclusao) { <li>@b</li> }</ul></div>
+        }
+        @if (rel.Situacao == SituacaoRelatorio.Concluido)
+        {
+            <div class="alerta alerta-sucesso" role="note">
+                <strong>Relatório concluído</strong> por @rel.ConcluidoPor em @FusoHorario.Formatar(rel.ConcluidoEmUtc)@(rel.NumeroRevisao > 0 ? $" (revisão {rel.NumeroRevisao})" : "").
+                @(Ator.EhAdministrador ? "Para corrigir, use “Corrigir relatório”: ele será reaberto para revisão e exigirá nova conclusão." : "O relatório está disponível somente para leitura.")
+            </div>
+        }
+        else if (rel.Situacao == SituacaoRelatorio.EmRevisao)
+        {
+            <div class="alerta alerta-aviso" role="note"><strong>Relatório em revisão (revisão @rel.NumeroRevisao).</strong> Reaberto pela administração para correção. É necessária nova conclusão.@(Ator.EhAdministrador ? "" : " Somente administradores podem alterá-lo.")</div>
+        }
+        else if (!_podeEditar)
+        {
+            <div class="alerta alerta-info" role="note">Você está no modo de leitura. Somente o auditor líder designado ou um administrador pode alterar este relatório.</div>
+        }
+
+        <section class="cartao">
+            <h2 class="secao-titulo">Dados da auditoria</h2>
+            <dl class="lista-def">
+                <dt>Código</dt><dd><strong>@_a.Codigo</strong></dd>
+                <dt>Tipo</dt><dd>@(_a.Tipo == TipoAuditoria.Interna ? "Interna" : "Fornecedores")</dd>
+                <dt>Datas e horários</dt><dd>@foreach (var p in _a.Plano?.Periodos ?? new()) { <div>@Rotulos.Periodo(p.Data, p.HoraInicio, p.HoraFim)</div> }</dd>
+                <dt>Normas</dt><dd>@string.Join(", ", _a.Normas.Select(n => n.NomeNorma))</dd>
+                @if (_a.Tipo == TipoAuditoria.Interna)
+                {
+                    <dt>Áreas</dt><dd>@Lista(_a.Areas.Select(x => x.NomeArea))</dd>
+                    @if (_a.Macroprocessos.Count > 0 || _a.Processos.Count > 0)
+                    {
+                        <dt>Macroprocessos</dt><dd>@Lista(_a.Macroprocessos.Select(x => x.NomeMacroprocesso))</dd>
+                        <dt>Processos</dt><dd>@Lista(_a.Processos.Select(x => x.NomeProcesso))</dd>
+                    }
+                }
+                else
+                {
+                    <dt>Fornecedor</dt><dd>@_a.FornecedorNome</dd>
+                    <dt>CNPJ</dt><dd>@_a.FornecedorCnpj</dd>
+                    <dt>Endereço</dt><dd>@_a.FornecedorEndereco</dd>
+                    <dt>Escopo de fornecimento</dt><dd>@_a.EscopoFornecimento</dd>
+                }
+                <dt>Auditor líder</dt><dd>@Lista(_a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Lider).Select(p => p.NomeAuditor))</dd>
+                <dt>Auditores</dt><dd>@Lista(_a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Auditor).Select(p => p.NomeAuditor))</dd>
+                @if (_a.Participantes.Any(p => p.Funcao == FuncaoAuditoria.Observador))
+                {
+                    <dt>Observadores</dt><dd>@Lista(_a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Observador).Select(p => p.NomeAuditor))</dd>
+                }
+            </dl>
+        </section>
+
+        <section class="cartao" aria-labelledby="tit-req">
+            <h2 class="secao-titulo" id="tit-req">Requisitos auditados</h2>
+            @{ var cob = RelatorioServico.CalcularCobertura(_a, _m.Constatacoes); }
+            <p style="margin:0"><strong>@cob.Resumo</strong> (Conformidade ou Não conformidade)</p>
+            <div class="progresso" role="progressbar" aria-valuemin="0" aria-valuemax="@cob.Total" aria-valuenow="@cob.Classificados.Count" aria-label="Requisitos classificados">
+                <span style="width:@(cob.Total == 0 ? 0 : cob.Classificados.Count * 100 / cob.Total)%"></span>
+            </div>
+            <details>
+                <summary style="cursor:pointer;font-weight:600;padding:.4rem 0">Ver requisitos e situação de classificação</summary>
+                <div class="tabela-wrap" style="margin-top:.5rem">
+                    <table class="tabela">
+                        <thead><tr><th>Norma</th><th>Requisito</th><th>Classificação</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _a.Requisitos)
+                            {
+                                var classes = _m.Constatacoes.Where(c => RegrasRelatorio.UsaRequisitos(c.Classificacao) && c.AuditoriaRequisitoIds.Contains(r.Id)).Select(c => c.Classificacao.Texto()).Distinct().ToList();
+                                <tr>
+                                    <td>@r.NomeNorma</td>
+                                    <td>@OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)</td>
+                                    <td>@if (classes.Count == 0) { <span class="etiqueta etiqueta-aviso">Pendente</span> } else { @string.Join(" / ", classes) }</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        </section>
+
+        <section class="cartao" aria-labelledby="tit-const">
+            <div class="cartao-cabecalho">
+                <h2 class="secao-titulo" id="tit-const" style="margin:0;border:0">Constatações</h2>
+                @if (_podeEditar) { <button type="button" class="btn btn-destaque" @onclick="NovaConstatacao"><Icone Nome="mais" />Adicionar constatação</button> }
+            </div>
+            @if (_m.Constatacoes.Count == 0) { <p class="texto-suave">Nenhuma constatação registrada.</p> }
+            @for (int i = 0; i < _m.Constatacoes.Count; i++)
+            {
+                var idx = i;
+                var c = _m.Constatacoes[idx];
+                <article class="constatacao classe-@c.Classificacao">
+                    <header>
+                        <span class="titulo-const">Constatação @Rotulos.NumeroConstatacao(idx + 1) <span class="sep">·</span> @c.Classificacao.Texto()</span>
+                        @if (c.Id == null) { <span class="etiqueta etiqueta-aviso">Não salva</span> }
+                        @if (_podeEditar)
+                        {
+                            <span class="acoes">
+                                <button type="button" class="btn btn-secundario btn-pequeno" @onclick="() => EditarConstatacao(idx)"><Icone Nome="editar" />Editar constatação</button>
+                                <button type="button" class="btn btn-perigo btn-pequeno" @onclick="() => ExcluirConstatacao(idx)"><Icone Nome="excluir" />Excluir constatação</button>
+                            </span>
+                        }
+                    </header>
+                    <div class="corpo">
+                        <dl>
+                            @if (RegrasRelatorio.UsaRequisitos(c.Classificacao))
+                            {
+                                <dt>Requisitos</dt>
+                                <dd>@string.Join("; ", _a.Requisitos.Where(r => c.AuditoriaRequisitoIds.Contains(r.Id)).Select(r => $"{r.NomeNorma} {r.Codigo} — {r.Titulo}"))</dd>
+                            }
+                            @switch (c.Classificacao)
+                            {
+                                case ClassificacaoConstatacao.Conformidade:
+                                    <dt>Evidência encontrada</dt><dd>@c.Evidencia</dd>
+                                    break;
+                                case ClassificacaoConstatacao.NaoConformidade:
+                                    <dt>Descrição da não conformidade</dt><dd>@c.DescricaoNaoConformidade</dd>
+                                    <dt>Evidências objetivas</dt><dd>@c.EvidenciasObjetivas</dd>
+                                    <dt>Número do PAC</dt><dd>@(string.IsNullOrWhiteSpace(c.NumeroPac) ? "—" : c.NumeroPac)</dd>
+                                    break;
+                                case ClassificacaoConstatacao.Observacao:
+                                    <dt>Observação</dt><dd>@c.Observacao</dd>
+                                    break;
+                                default:
+                                    <dt>Oportunidade de melhoria</dt><dd>@c.OportunidadeMelhoria</dd>
+                                    break;
+                            }
+                        </dl>
+                    </div>
+                </article>
+            }
+        </section>
+
+        @if (_a.Tipo == TipoAuditoria.Fornecedor)
+        {
+            <section class="cartao" aria-labelledby="tit-conc">
+                <h2 class="secao-titulo" id="tit-conc">Conclusão</h2>
+                <div class="campo">
+                    <span class="rotulo obrigatorio" id="rot-qual">Qualificação do fornecedor</span>
+                    <div class="opcoes-radio" role="radiogroup" aria-labelledby="rot-qual">
+                        @foreach (var q in Enum.GetValues<QualificacaoFornecedor>())
+                        {
+                            <label class="marcador @(!_podeEditar ? "desabilitado" : "")">
+                                <input type="radio" name="qualificacao" checked="@(_m.Qualificacao == q)" disabled="@(!_podeEditar)" @onchange="() => { _m.Qualificacao = q; Mudou(); }" />@q.Texto()
+                            </label>
+                        }
+                    </div>
+                    <span class="ajuda">Obrigatória para concluir o relatório.</span>
+                </div>
+                <div class="grade" style="margin-top:1rem">
+                    <div class="campo col-12">
+                        <label for="obs-conc">Observações</label>
+                        <textarea id="obs-conc" rows="4" maxlength="8000" disabled="@(!_podeEditar)" @onchange="e => { _m.ObservacoesConclusao = e.Value?.ToString(); Mudou(); }">@_m.ObservacoesConclusao</textarea>
+                    </div>
+                    <div class="campo col-4">
+                        <label for="rqf">Número do RQF</label>
+                        <input id="rqf" type="text" maxlength="50" value="@_m.NumeroRqf" disabled="@(!_podeEditar)" @onchange="e => { _m.NumeroRqf = e.Value?.ToString(); Mudou(); }" />
+                    </div>
+                </div>
+            </section>
+        }
+
+        <section class="cartao">
+            <div class="linha-acoes">
+                @if (_podeEditar)
+                {
+                    <span class="estado @(_sujo ? "sujo" : "")" style="margin-right:auto;@(_sujo ? "color:var(--aviso);font-weight:600" : "color:var(--texto-suave)")">
+                        @(_sujo ? "Alterações não salvas — clique em Salvar relatório" : $"Situação: {rel.Situacao.Texto()} · última gravação por {rel.AlteradoPor ?? rel.CriadoPor}")
+                    </span>
+                    <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="Salvar"><Icone Nome="salvar" />Salvar relatório</button>
+                    <button type="button" class="btn btn-destaque" disabled="@Ocupado" @onclick="Concluir"><Icone Nome="concluir" />Concluir relatório</button>
+                }
+                else
+                {
+                    <span class="texto-suave" style="margin-right:auto">Situação: @rel.Situacao.Texto()</span>
+                }
+                @if (Permissoes.PodeReabrirRelatorio(Ator, _a))
+                {
+                    <button type="button" class="btn btn-secundario" @onclick="() => { _motivo = string.Empty; _reabrindo = true; }"><Icone Nome="editar" />Corrigir relatório</button>
+                }
+            </div>
+        </section>
+    }
+</div>
+
+@if (_edicao != null && _a != null)
+{
+    <Dialogo Titulo="@(_indice < 0 ? "Adicionar constatação" : $"Editar constatação {Rotulos.NumeroConstatacao(_indice + 1)}")" Largo="true" AoFechar="CancelarEdicao">
+        <Corpo>
+            <ListaErros Erros="_errosEdicao" />
+            <div class="campo">
+                <span class="rotulo obrigatorio" id="rot-class">Classificação</span>
+                <div class="opcoes-radio horizontal" role="radiogroup" aria-labelledby="rot-class" @key="_versaoRadio">
+                    @foreach (var cl in Enum.GetValues<ClassificacaoConstatacao>())
+                    {
+                        <label class="marcador">
+                            <input type="radio" name="classificacao" checked="@(_edicao.Classificacao == cl)" @onchange="() => TrocarClassificacao(cl)" />@cl.Texto()
+                        </label>
+                    }
+                </div>
+            </div>
+            @if (_descartaveis.Count > 0)
+            {
+                <div class="alerta alerta-aviso" role="status" style="margin-top:.8rem">
+                    Ao salvar com a classificação “@_edicao.Classificacao.Texto()”, serão descartados: <strong>@string.Join(", ", _descartaveis)</strong>.
+                    Volte à classificação anterior para recuperar o conteúdo.
+                </div>
+            }
+            @if (RegrasRelatorio.UsaRequisitos(_edicao.Classificacao))
+            {
+                <div class="campo" style="margin-top:1rem">
+                    <span class="rotulo obrigatorio">Requisitos auditados</span>
+                    <span class="ajuda">Selecione um ou mais requisitos@(_edicao.Classificacao == ClassificacaoConstatacao.NaoConformidade ? " (uma não conformidade pode abranger vários requisitos)" : "").</span>
+                    <SeletorMultiplo Id="req-const" Rotulo="Requisitos auditados" Placeholder="Selecione os requisitos" MaxResumo="10"
+                                     Opcoes="@_a.Requisitos.Select(r => new OpcaoSelecao(r.Id, $"{r.Codigo} — {r.Titulo}", r.NomeNorma)).ToList()"
+                                     Selecionados="_edicao.AuditoriaRequisitoIds" SelecionadosChanged="v => _edicao.AuditoriaRequisitoIds = v" />
+                </div>
+            }
+            @switch (_edicao.Classificacao)
+            {
+                case ClassificacaoConstatacao.Conformidade:
+                    <div class="campo" style="margin-top:1rem">
+                        <label for="ev" class="obrigatorio">Evidência encontrada</label>
+                        <textarea id="ev" rows="6" @bind="_edicao.Evidencia"></textarea>
+                    </div>
+                    break;
+                case ClassificacaoConstatacao.NaoConformidade:
+                    <div class="campo" style="margin-top:1rem">
+                        <label for="desc-nc" class="obrigatorio">Descrição da não conformidade</label>
+                        <textarea id="desc-nc" rows="5" @bind="_edicao.DescricaoNaoConformidade"></textarea>
+                    </div>
+                    <div class="campo" style="margin-top:1rem">
+                        <label for="ev-obj" class="obrigatorio">Evidências objetivas</label>
+                        <textarea id="ev-obj" rows="5" @bind="_edicao.EvidenciasObjetivas"></textarea>
+                    </div>
+                    <div class="campo" style="margin-top:1rem;max-width:320px">
+                        <label for="pac">Número do PAC</label>
+                        <input id="pac" type="text" maxlength="50" @bind="_edicao.NumeroPac" />
+                        <span class="ajuda">Apenas a referência; o PAC é tratado em outro sistema.</span>
+                    </div>
+                    break;
+                case ClassificacaoConstatacao.Observacao:
+                    <div class="campo" style="margin-top:1rem">
+                        <label for="obs" class="obrigatorio">Observação</label>
+                        <textarea id="obs" rows="6" @bind="_edicao.Observacao"></textarea>
+                    </div>
+                    break;
+                default:
+                    <div class="campo" style="margin-top:1rem">
+                        <label for="om" class="obrigatorio">Oportunidade de melhoria</label>
+                        <textarea id="om" rows="6" @bind="_edicao.OportunidadeMelhoria"></textarea>
+                    </div>
+                    break;
+            }
+            <p class="texto-suave pequeno" style="margin-top:1rem">A constatação é incluída na tela ao confirmar e gravada no banco ao clicar em “Salvar relatório”.</p>
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="CancelarEdicao">Cancelar</button>
+            <button type="button" class="btn btn-primario" @onclick="ConfirmarEdicao">@(_indice < 0 ? "Adicionar constatação" : "Aplicar alterações")</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@if (_reabrindo)
+{
+    <Dialogo Titulo="Corrigir relatório concluído" AoFechar="() => _reabrindo = false">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <p>O relatório será reaberto para revisão, a situação no calendário deixará de ser “Realizada” e será necessária uma nova conclusão. A versão concluída atual ficará registrada no histórico.</p>
+            <div class="campo">
+                <label for="motivo" class="obrigatorio">Motivo da correção</label>
+                <textarea id="motivo" rows="3" maxlength="900" @bind="_motivo"></textarea>
+            </div>
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="() => _reabrindo = false">Cancelar</button>
+            <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="Reabrir">Reabrir para revisão</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Auditoria? _a;
+    private RelatorioEdicao _m = new();
+    private bool _podeEditar, _sujo, _reabrindo;
+    private string _motivo = "";
+    private ConstatacaoEdicao? _edicao;
+    private int _indice = -1;
+    private List<string> _errosEdicao = new();
+    private List<string> _descartaveis = new();
+    private ClassificacaoConstatacao _classificacaoOriginal;
+    private int _versaoRadio;
+    private List<RequisitoPendente> _pendentes = new();
+    private List<string> _bloqueiosConclusao = new();
+
+    private static string Lista(IEnumerable<string> l) { var x = l.ToList(); return x.Count == 0 ? "—" : string.Join(", ", x); }
+
+    protected override async Task OnInitializedAsync() => await Recarregar();
+
+    private async Task Recarregar()
+    {
+        await Carregar(async () =>
+        {
+            var ator = await ObterAtorAsync();
+            _a = await Programacao.ObterDetalheAsync(ator, Id);
+            _m = RelatorioServico.ParaEdicao(_a);
+            _podeEditar = _a.Relatorio != null && Permissoes.PodeEditarRelatorio(ator, _a);
+            _sujo = false;
+        });
+    }
+
+    private void Mudou() => _sujo = true;
+
+    private async Task Gerar()
+    {
+        if (await Executar(async () => await Relatorios.IniciarAsync(await ObterAtorAsync(), Id), "Relatório gerado."))
+            await Recarregar();
+    }
+
+    // ------------------------------------------------------------ Constatações (em memória até salvar)
+
+    private void NovaConstatacao()
+    {
+        _indice = -1;
+        _edicao = new ConstatacaoEdicao();
+        _classificacaoOriginal = _edicao.Classificacao;
+        _errosEdicao = new();
+        _descartaveis = new();
+    }
+
+    private void EditarConstatacao(int idx)
+    {
+        _indice = idx;
+        _edicao = _m.Constatacoes[idx].Clonar();
+        _classificacaoOriginal = _edicao.Classificacao;
+        _errosEdicao = new();
+        _descartaveis = new();
+    }
+
+    private async Task TrocarClassificacao(ClassificacaoConstatacao nova)
+    {
+        if (_edicao == null || _edicao.Classificacao == nova) return;
+        var perderia = _edicao.CamposQueSeraoDescartados(nova);
+        if (perderia.Count > 0 && !await Confirmacao.ConfirmarAsync("Trocar classificação",
+                $"A classificação “{nova.Texto()}” não utiliza alguns campos já preenchidos. Eles serão descartados quando a constatação for salva.",
+                "Trocar classificação", false, perderia))
+        {
+            _versaoRadio++; // restaura a marcação visual da classificação atual
+            return;
+        }
+        _edicao.Classificacao = nova;
+        _descartaveis = perderia;
+    }
+
+    private void ConfirmarEdicao()
+    {
+        if (_edicao == null || _a == null) return;
+        var normalizada = _edicao.Clonar();
+        RelatorioServico.Normalizar(normalizada);
+        _errosEdicao = RelatorioServico.Validar(normalizada, _a.Requisitos.Select(r => r.Id).ToHashSet());
+        if (_errosEdicao.Count > 0) return;
+        if (_indice < 0) _m.Constatacoes.Add(normalizada);
+        else _m.Constatacoes[_indice] = normalizada;
+        _edicao = null;
+        Mudou();
+        _pendentes.Clear();
+    }
+
+    private void CancelarEdicao() => _edicao = null;
+
+    private async Task ExcluirConstatacao(int idx)
+    {
+        var c = _m.Constatacoes[idx];
+        if (!await Confirmacao.ConfirmarAsync("Excluir constatação",
+                $"Excluir a constatação {Rotulos.NumeroConstatacao(idx + 1)} · {c.Classificacao.Texto()}? As demais serão renumeradas. A exclusão é gravada ao salvar o relatório.",
+                "Excluir constatação", true))
+            return;
+        _m.Constatacoes.RemoveAt(idx);
+        Mudou();
+    }
+
+    // ------------------------------------------------------------ Salvar / concluir / reabrir
+
+    private async Task Salvar()
+    {
+        _pendentes.Clear(); _bloqueiosConclusao.Clear();
+        if (await Executar(async () => await Relatorios.SalvarAsync(await ObterAtorAsync(), _m), "Relatório salvo com sucesso."))
+            await Recarregar();
+    }
+
+    private async Task Concluir()
+    {
+        if (!await Confirmacao.ConfirmarAsync("Concluir relatório",
+                "Os dados atuais serão salvos e verificados. Se todos os critérios forem atendidos, o relatório será concluído e ficará somente para leitura (correções apenas por administrador).",
+                "Concluir relatório"))
+            return;
+        _pendentes.Clear(); _bloqueiosConclusao.Clear();
+        ResultadoConclusao? r = null;
+        var ok = await Executar(async () => r = await Relatorios.ConcluirAsync(await ObterAtorAsync(), _m));
+        if (!ok || r == null) return;
+        await Recarregar();
+        if (r.Concluido)
+        {
+            Notificacoes.Sucesso("Relatório concluído. A auditoria passa a constar como Realizada no calendário.");
+        }
+        else
+        {
+            _pendentes = r.Pendentes.ToList();
+            _bloqueiosConclusao = r.Erros.Where(e => !e.StartsWith("Há ")).ToList();
+            Notificacoes.Aviso($"Dados salvos, mas o relatório não foi concluído. {r.Cobertura.Resumo}.");
+        }
+    }
+
+    private async Task Reabrir()
+    {
+        if (await Executar(async () => await Relatorios.ReabrirAsync(await ObterAtorAsync(), Id, _motivo), "Relatório reaberto para revisão."))
+        {
+            _reabrindo = false;
+            await Recarregar();
+        }
+    }
+
+    private async Task ConfirmarSaida(LocationChangingContext ctx)
+    {
+        if (!_sujo) return;
+        if (!await Confirmacao.ConfirmarAsync("Sair sem salvar?", "Há alterações não salvas no relatório. Deseja sair e descartá-las?", "Sair sem salvar", true))
+            ctx.PreventNavigation();
+    }
+}

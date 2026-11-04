@@ -1,0 +1,80 @@
+@page "/entrar"
+@layout LayoutSimples
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject UsuarioServico Usuarios
+@inject NavigationManager Nav
+@inject IConfiguration Config
+
+<PageTitle>Entrar — NUCLAUD</PageTitle>
+
+<div class="tela-entrada">
+    <div class="lado-imagem" aria-hidden="true">
+        <div>
+            <div class="marca-nome" style="color:#fff;font-size:2.2rem"><span class="ponto"></span>NUCLAUD</div>
+            <p style="font-size:1.15rem;color:#c7eef1;margin-top:.4rem">Gestão de auditorias internas e de fornecedores · NUCLEP</p>
+        </div>
+    </div>
+    <div class="lado-form">
+        <div class="form-entrada">
+            <div class="marca-nome" style="margin-bottom:.4rem"><span class="ponto" aria-hidden="true"></span>NUCLAUD</div>
+            <h1>Entrar</h1>
+            <p class="texto-suave">Use o seu nome da rede e a senha cadastrada pelo administrador.</p>
+            @if (Config.GetValue("Demonstracao:Habilitada", false))
+            {
+                <div class="alerta alerta-aviso" role="note">Ambiente de demonstração e testes — dados fictícios.</div>
+            }
+            @if (_mensagem != null)
+            {
+                <div class="alerta alerta-erro" role="alert">@_mensagem</div>
+            }
+            <EditForm Model="Modelo" method="post" OnValidSubmit="EntrarAsync" FormName="entrar" Enhance="false">
+                <DataAnnotationsValidator />
+                <div class="campo">
+                    <label for="nome-rede">Nome da rede</label>
+                    <InputText id="nome-rede" @bind-Value="Modelo.NomeRede" autocomplete="username" autocapitalize="none" spellcheck="false" />
+                    <ValidationMessage For="() => Modelo.NomeRede" />
+                </div>
+                <div class="campo">
+                    <label for="senha">Senha</label>
+                    <InputText id="senha" type="password" @bind-Value="Modelo.Senha" autocomplete="current-password" />
+                    <ValidationMessage For="() => Modelo.Senha" />
+                </div>
+                <button type="submit" class="btn btn-primario" style="width:100%">Entrar</button>
+            </EditForm>
+            <p class="texto-suave pequeno" style="margin-top:1.2rem">Esqueceu a senha? Solicite a redefinição a um administrador do NUCLAUD.</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm] private ModeloEntrada Modelo { get; set; } = new();
+    [SupplyParameterFromQuery(Name = "retorno")] private string? Retorno { get; set; }
+    private string? _mensagem;
+
+    private async Task EntrarAsync()
+    {
+        var r = await Usuarios.AutenticarAsync(Modelo.NomeRede, Modelo.Senha);
+        if (!r.Sucesso || r.Usuario == null)
+        {
+            _mensagem = r.Mensagem;
+            Modelo.Senha = "";
+            return;
+        }
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ClaimsNuclaud.Criar(r.Usuario),
+            new AuthenticationProperties { IsPersistent = false });
+        var destino = r.Usuario.DeveTrocarSenha ? "/alterar-senha"
+            : (!string.IsNullOrEmpty(Retorno) && Retorno.StartsWith('/') && !Retorno.StartsWith("//") && !Retorno.StartsWith("/\\") ? Retorno : "/calendario");
+        Nav.NavigateTo(destino, forceLoad: true);
+    }
+
+    private sealed class ModeloEntrada
+    {
+        [Required(ErrorMessage = "Informe o nome da rede.")] public string? NomeRede { get; set; }
+        [Required(ErrorMessage = "Informe a senha.")] public string? Senha { get; set; }
+    }
+}

@@ -1,0 +1,92 @@
+@page "/programacao"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject ProgramacaoServico Programacao
+@inject ConsultasServico Consultas
+@inject IRelogio Relogio
+
+<PageTitle>Programar auditorias — NUCLAUD</PageTitle>
+<PageHeader Titulo="Programar auditorias" Subtitulo="Programação anual de auditorias internas e de fornecedores.">
+    <a class="btn btn-destaque" href="/programacao/nova?ano=@_ano"><Icone Nome="mais" />Nova auditoria</a>
+</PageHeader>
+
+<div class="conteudo">
+    @if (ErroCarga != null) { <div class="alerta alerta-erro" role="alert">@ErroCarga</div> }
+    <ListaErros Erros="Erros" />
+    <div class="cartao">
+        <div class="cartao-cabecalho">
+            <div class="campo" style="max-width:220px">
+                <label for="ano">Ano</label>
+                <select id="ano" value="@_ano" @onchange="TrocarAno">
+                    @foreach (var a in _anos) { <option value="@a">@a</option> }
+                </select>
+            </div>
+            <span class="texto-suave">@_lista.Count auditoria(s) programada(s) em @_ano</span>
+        </div>
+        <div class="tabela-wrap">
+            <table class="tabela">
+                <thead><tr><th>Mês previsto</th><th>Código</th><th>Tipo</th><th>Área / Fornecedor</th><th>Normas</th><th>Auditor líder</th><th>Situação</th><th class="acoes">Ações</th></tr></thead>
+                <tbody>
+                    @if (_lista.Count == 0)
+                    {
+                        <tr><td colspan="8" class="vazio">Nenhuma auditoria programada para @_ano. Use “Nova auditoria”.</td></tr>
+                    }
+                    @foreach (var a in _lista)
+                    {
+                        <tr>
+                            <td>@Rotulos.NomeMes(a.MesPrevisto)</td>
+                            <td><strong>@a.Codigo</strong></td>
+                            <td>@a.Tipo.Texto()</td>
+                            <td>@a.Identificacao</td>
+                            <td>@string.Join(", ", a.Normas)</td>
+                            <td>@(a.Lider ?? "—")</td>
+                            <td><Situacao Valor="a.Situacao" /></td>
+                            <td class="acoes">
+                                <a class="btn btn-secundario btn-pequeno" href="/auditorias/@a.Id" aria-label="Visualizar @a.Codigo"><Icone Nome="ver" />Ver</a>
+                                <a class="btn btn-secundario btn-pequeno" href="/programacao/@a.Id/editar" aria-label="Editar @a.Codigo"><Icone Nome="editar" />Editar</a>
+                                <button type="button" class="btn btn-perigo btn-pequeno" @onclick="() => Excluir(a)" aria-label="Excluir @a.Codigo"><Icone Nome="excluir" />Excluir</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "ano")] private int? AnoQuery { get; set; }
+    private int _ano;
+    private List<int> _anos = new();
+    private List<AuditoriaResumo> _lista = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Carregar(async () =>
+        {
+            var atual = FusoHorario.AnoAtual(Relogio);
+            var anos = await Consultas.AnosDisponiveisAsync();
+            _anos = anos.Append(atual).Append(atual + 1).Distinct().OrderBy(x => x).ToList();
+            _ano = AnoQuery ?? anos.Where(a => a >= atual).DefaultIfEmpty(atual).Min();
+            if (!_anos.Contains(_ano)) _anos = _anos.Append(_ano).OrderBy(x => x).ToList();
+            await Recarregar();
+        });
+    }
+
+    private async Task Recarregar() => _lista = await Programacao.ListarAsync(await ObterAtorAsync(), _ano);
+
+    private async Task TrocarAno(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var a)) { _ano = a; await Carregar(Recarregar); }
+    }
+
+    private async Task Excluir(AuditoriaResumo a)
+    {
+        var itens = new List<string>();
+        if (a.Situacao != SituacaoAuditoria.Programada) itens.Add("O plano e/ou relatório desta auditoria também serão excluídos.");
+        itens.Add("Um retrato dos dados ficará registrado no histórico de alterações.");
+        if (!await Confirmacao.ConfirmarAsync("Excluir programação", $"Deseja excluir a programação {a.Codigo}? Esta ação não pode ser desfeita.", "Excluir programação", true, itens)) return;
+        if (await Executar(async () => await Programacao.ExcluirAsync(await ObterAtorAsync(), a.Id), $"Programação {a.Codigo} excluída."))
+            await Recarregar();
+    }
+}

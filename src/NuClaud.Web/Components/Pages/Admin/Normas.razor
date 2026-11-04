@@ -1,0 +1,175 @@
+@page "/admin/normas"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject NormaServico NormasSrv
+
+<PageTitle>Cadastrar normas e requisitos — NUCLAUD</PageTitle>
+<PageHeader Titulo="Cadastrar normas e requisitos" Subtitulo="Requisitos com número e título, em ordem numérica (dois ou três níveis, ex.: 4.1 e 4.4.1).">
+    <Migalhas><a href="/admin">Administração do sistema</a> › Normas e requisitos</Migalhas>
+    <ChildContent><button type="button" class="btn btn-destaque" @onclick="NovaNorma"><Icone Nome="mais" />Nova norma</button></ChildContent>
+</PageHeader>
+
+<div class="conteudo">
+    @if (ErroCarga != null) { <div class="alerta alerta-erro">@ErroCarga</div> }
+    @if (_normaEdicao == null && _reqEdicao == null) { <ListaErros Erros="Erros" /> }
+    <div class="grade">
+        <section class="cartao col-4" aria-label="Normas">
+            <h2 class="secao-titulo">Normas</h2>
+            <div class="opcoes-check" role="list">
+                @foreach (var nm in _normas)
+                {
+                    <button type="button" role="listitem" class="btn @(nm.Id == _selId ? "btn-primario" : "btn-secundario")" style="width:100%;justify-content:space-between;white-space:normal;text-align:left" @onclick="() => _selId = nm.Id">
+                        <span>@nm.Nome @if (!nm.Ativo) { <span class="etiqueta etiqueta-inativo">Inativa</span> }</span>
+                        <span class="pequeno">@nm.Requisitos.Count</span>
+                    </button>
+                }
+            </div>
+        </section>
+        <section class="cartao col-8">
+            @if (Selecionada is { } n)
+            {
+                <div class="cartao-cabecalho">
+                    <h2>@n.Nome</h2>
+                    <div class="linha-acoes">
+                        <button type="button" class="btn btn-secundario btn-pequeno" @onclick="() => EditarNorma(n)"><Icone Nome="editar" />Editar norma</button>
+                        <button type="button" class="btn btn-perigo btn-pequeno" @onclick="() => ExcluirNorma(n)"><Icone Nome="excluir" />Excluir norma</button>
+                    </div>
+                </div>
+                <dl class="lista-def" style="margin-bottom:1rem">
+                    <dt>Edição</dt><dd>@(n.Edicao ?? "Não definida")</dd>
+                    <dt>Cor no calendário</dt><dd>@n.GrupoCor.Texto()</dd>
+                    <dt>Situação</dt><dd>@(n.Ativo ? "Ativa" : "Inativa (não pode ser usada em novas programações)")</dd>
+                    @if (!string.IsNullOrWhiteSpace(n.FonteCarga)) { <dt>Fonte / observações</dt><dd class="pequeno">@n.FonteCarga</dd> }
+                </dl>
+                <div class="cartao-cabecalho">
+                    <h3 style="margin:0">Requisitos (@n.Requisitos.Count)</h3>
+                    <button type="button" class="btn btn-destaque btn-pequeno" @onclick="() => NovoRequisito(n)"><Icone Nome="mais" />Novo requisito</button>
+                </div>
+                <div class="tabela-wrap">
+                    <table class="tabela">
+                        <thead><tr><th style="width:110px">Número</th><th>Título</th><th>Situação</th><th class="acoes">Ações</th></tr></thead>
+                        <tbody>
+                            @if (n.Requisitos.Count == 0) { <tr><td colspan="4" class="vazio">Nenhum requisito cadastrado. Use “Novo requisito”.</td></tr> }
+                            @foreach (var r in n.Requisitos)
+                            {
+                                <tr>
+                                    <td style="@(r.Codigo.Count(c => c == '.') == 2 ? "padding-left:1.8rem" : "font-weight:600")">@r.Codigo</td>
+                                    <td>@r.Titulo</td>
+                                    <td><span class="etiqueta @(r.Ativo ? "etiqueta-ativo" : "etiqueta-inativo")">@(r.Ativo ? "Ativo" : "Inativo")</span></td>
+                                    <td class="acoes">
+                                        <button type="button" class="btn btn-secundario btn-pequeno" @onclick="() => EditarRequisito(r)" aria-label="Editar requisito @r.Codigo"><Icone Nome="editar" />Editar</button>
+                                        <button type="button" class="btn btn-perigo btn-pequeno" @onclick="() => ExcluirRequisito(r)" aria-label="Excluir requisito @r.Codigo"><Icone Nome="excluir" />Excluir</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="texto-suave">Selecione uma norma.</p>
+            }
+        </section>
+    </div>
+</div>
+
+@if (_normaEdicao != null)
+{
+    <Dialogo Titulo="@(_normaEdicao.Id == null ? "Nova norma" : "Editar norma")" AoFechar="() => _normaEdicao = null">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <div class="campo"><label for="n-nome" class="obrigatorio">Nome da norma</label><input id="n-nome" type="text" maxlength="100" @bind="_normaEdicao.Nome" /></div>
+            <div class="campo" style="margin-top:.8rem"><label for="n-ed">Edição</label><input id="n-ed" type="text" maxlength="200" placeholder="Ex.: ABNT NBR ISO 9001:2015" @bind="_normaEdicao.Edicao" /><span class="ajuda">Informe quando conhecida.</span></div>
+            <div class="campo" style="margin-top:.8rem">
+                <label for="n-cor">Cor no calendário</label>
+                <select id="n-cor" value="@((int)_normaEdicao.GrupoCor)" @onchange="e => _normaEdicao.GrupoCor = (GrupoCorNorma)int.Parse(e.Value!.ToString()!)">
+                    @foreach (var g in Enum.GetValues<GrupoCorNorma>()) { <option value="@((int)g)">@g.Texto()</option> }
+                </select>
+            </div>
+            <div class="campo" style="margin-top:.8rem"><label for="n-fonte">Fonte / observações</label><textarea id="n-fonte" rows="3" maxlength="2000" @bind="_normaEdicao.FonteCarga"></textarea></div>
+            <label class="marcador" style="margin-top:.8rem"><input type="checkbox" @bind="_normaEdicao.Ativo" />Ativa</label>
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="() => _normaEdicao = null">Cancelar</button>
+            <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="SalvarNorma">Salvar norma</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@if (_reqEdicao != null)
+{
+    <Dialogo Titulo="@(_reqEdicao.Id == null ? "Novo requisito" : "Editar requisito")" AoFechar="() => _reqEdicao = null">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <p class="texto-suave">Norma: <strong>@_normas.FirstOrDefault(x => x.Id == _reqEdicao.NormaId)?.Nome</strong></p>
+            <div class="campo"><label for="r-cod" class="obrigatorio">Número</label><input id="r-cod" type="text" maxlength="20" inputmode="decimal" placeholder="Ex.: 4.1 ou 8.4.1" @bind="_reqEdicao.Codigo" /><span class="ajuda">Dois ou três níveis numéricos (não use apenas o capítulo, como “4”, nem “4.4.1.1”).</span></div>
+            <div class="campo" style="margin-top:.8rem"><label for="r-tit" class="obrigatorio">Título</label><input id="r-tit" type="text" maxlength="300" @bind="_reqEdicao.Titulo" /></div>
+            <label class="marcador" style="margin-top:.8rem"><input type="checkbox" @bind="_reqEdicao.Ativo" />Ativo</label>
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="() => _reqEdicao = null">Cancelar</button>
+            <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="SalvarRequisito">Salvar requisito</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@code {
+    private List<Norma> _normas = new();
+    private int? _selId;
+    private NormaEdicao? _normaEdicao;
+    private RequisitoEdicao? _reqEdicao;
+    private Norma? Selecionada => _normas.FirstOrDefault(n => n.Id == _selId);
+
+    protected override async Task OnInitializedAsync() => await Carregar(Recarregar);
+
+    private async Task Recarregar()
+    {
+        _normas = await NormasSrv.ListarAsync(incluirRequisitos: true);
+        if (_selId == null || _normas.All(n => n.Id != _selId)) _selId = _normas.FirstOrDefault()?.Id;
+    }
+
+    private void NovaNorma() { Erros.Clear(); _normaEdicao = new NormaEdicao(); }
+    private void EditarNorma(Norma n) { Erros.Clear(); _normaEdicao = new NormaEdicao { Id = n.Id, Versao = n.Versao, Nome = n.Nome, Edicao = n.Edicao, FonteCarga = n.FonteCarga, GrupoCor = n.GrupoCor, Ativo = n.Ativo }; }
+    private void NovoRequisito(Norma n) { Erros.Clear(); _reqEdicao = new RequisitoEdicao { NormaId = n.Id }; }
+    private void EditarRequisito(Requisito r) { Erros.Clear(); _reqEdicao = new RequisitoEdicao { Id = r.Id, Versao = r.Versao, NormaId = r.NormaId, Codigo = r.Codigo, Titulo = r.Titulo, Ativo = r.Ativo }; }
+
+    private async Task SalvarNorma()
+    {
+        if (_normaEdicao == null) return;
+        int id = 0;
+        if (await Executar(async () => id = await NormasSrv.SalvarNormaAsync(await ObterAtorAsync(), _normaEdicao), "Norma salva com sucesso."))
+        {
+            _normaEdicao = null;
+            _selId = id;
+            await Recarregar();
+        }
+    }
+
+    private async Task ExcluirNorma(Norma n)
+    {
+        if (!await Confirmacao.ConfirmarAsync("Excluir norma", $"Deseja excluir a norma \"{n.Nome}\"?", "Excluir norma", true)) return;
+        if (await Executar(async () => await NormasSrv.ExcluirNormaAsync(await ObterAtorAsync(), n.Id), "Norma excluída."))
+        {
+            _selId = null;
+            await Recarregar();
+        }
+    }
+
+    private async Task SalvarRequisito()
+    {
+        if (_reqEdicao == null) return;
+        if (await Executar(async () => await NormasSrv.SalvarRequisitoAsync(await ObterAtorAsync(), _reqEdicao), "Requisito salvo com sucesso."))
+        {
+            _reqEdicao = null;
+            await Recarregar();
+        }
+    }
+
+    private async Task ExcluirRequisito(Requisito r)
+    {
+        if (!await Confirmacao.ConfirmarAsync("Excluir requisito", $"Deseja excluir o requisito {OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)}?", "Excluir requisito", true)) return;
+        if (await Executar(async () => await NormasSrv.ExcluirRequisitoAsync(await ObterAtorAsync(), r.Id), "Requisito excluído."))
+            await Recarregar();
+    }
+}

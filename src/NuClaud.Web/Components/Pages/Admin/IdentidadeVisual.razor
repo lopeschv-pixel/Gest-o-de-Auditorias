@@ -1,0 +1,88 @@
+@page "/admin/identidade-visual"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject IdentidadeVisualServico Visual
+
+<PageTitle>Identidade visual — NUCLAUD</PageTitle>
+<PageHeader Titulo="Identidade visual" Subtitulo="Logotipo oficial da NUCLEP usado nos PDFs do programa anual, dos planos e dos relatórios.">
+    <Migalhas><a href="/admin">Administração do sistema</a> › Identidade visual</Migalhas>
+</PageHeader>
+
+<div class="conteudo">
+    <ListaErros Erros="Erros" />
+    <div class="grade">
+        <section class="cartao col-6">
+            <h2 class="secao-titulo">Logotipo atual</h2>
+            @if (_logo == null)
+            {
+                <div class="logo-previa"><span class="texto-suave">Nenhum logotipo enviado. Os PDFs são gerados sem imagem, com o cabeçalho organizado.</span></div>
+            }
+            else
+            {
+                <div class="logo-previa"><img src="/arquivos/logo?v=@_logo.Versao" alt="Logotipo atual" /></div>
+                <p class="texto-suave pequeno" style="margin-top:.6rem">@_logo.Largura × @_logo.Altura px · atualizado por @_logo.AtualizadoPor em @FusoHorario.Formatar(_logo.AtualizadoEmUtc)</p>
+                <button type="button" class="btn btn-perigo btn-pequeno" @onclick="Remover"><Icone Nome="excluir" />Remover logotipo</button>
+            }
+        </section>
+        <section class="cartao col-6">
+            <h2 class="secao-titulo">Enviar ou substituir</h2>
+            <div class="campo">
+                <label for="arquivo">Arquivo de imagem (PNG, JPEG ou WebP, até 2 MB)</label>
+                <InputFile id="arquivo" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" OnChange="Selecionar" />
+                <span class="ajuda">A proporção é preservada nos documentos. Prefira imagem com fundo transparente ou branco.</span>
+            </div>
+            @if (_previa != null)
+            {
+                <h3 style="margin-top:1rem">Prévia</h3>
+                <div class="logo-previa"><img src="@_previa" alt="Prévia do novo logotipo" /></div>
+                <div class="linha-acoes" style="margin-top:.8rem">
+                    <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="Salvar"><Icone Nome="salvar" />Salvar logotipo</button>
+                    <button type="button" class="btn btn-secundario" @onclick="() => { _previa = null; _dados = null; }">Cancelar</button>
+                </div>
+            }
+        </section>
+    </div>
+</div>
+
+@code {
+    private Logotipo? _logo;
+    private byte[]? _dados;
+    private string? _previa;
+
+    protected override async Task OnInitializedAsync() => await Carregar(async () => _logo = await Visual.ObterLogoAsync());
+
+    private async Task Selecionar(InputFileChangeEventArgs e)
+    {
+        Erros.Clear();
+        _previa = null; _dados = null;
+        try
+        {
+            if (e.File.Size > IdentidadeVisualServico.TamanhoMaximoBytes) { Erros.Add("O arquivo deve ter no máximo 2 MB."); return; }
+            using var ms = new MemoryStream();
+            await e.File.OpenReadStream(IdentidadeVisualServico.TamanhoMaximoBytes).CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            var (png, _, _, _) = IdentidadeVisualServico.Processar(bytes); // valida formato e conteúdo
+            _dados = bytes;
+            _previa = "data:image/png;base64," + Convert.ToBase64String(png);
+        }
+        catch (RegraNegocioException ex) { Erros.AddRange(ex.Erros); }
+        catch (IOException) { Erros.Add("Não foi possível ler o arquivo."); }
+    }
+
+    private async Task Salvar()
+    {
+        if (_dados == null) return;
+        if (await Executar(async () => await Visual.SalvarLogoAsync(await ObterAtorAsync(), _dados), "Logotipo salvo. Ele será usado nos próximos PDFs gerados."))
+        {
+            _dados = null; _previa = null;
+            _logo = await Visual.ObterLogoAsync();
+        }
+    }
+
+    private async Task Remover()
+    {
+        if (!await Confirmacao.ConfirmarAsync("Remover logotipo", "Os PDFs passarão a ser gerados sem logotipo. Deseja continuar?", "Remover", true)) return;
+        if (await Executar(async () => await Visual.RemoverLogoAsync(await ObterAtorAsync()), "Logotipo removido."))
+            _logo = null;
+    }
+}

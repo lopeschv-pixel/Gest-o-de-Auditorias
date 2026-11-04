@@ -1,0 +1,12 @@
+{
+  "name": "NUCLAUD (testes no navegador)",
+  "dockerComposeFile": ["docker-compose.devcontainer.yml"],
+  "service": "dev",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "initializeCommand": "bash scripts/gerar-env.sh .devcontainer/.env",
+  "postCreateCommand": "dotnet restore && dotnet tool restore",
+  "postStartCommand": "bash scripts/iniciar-codespace.sh",
+  "forwardPorts": [5251],
+  "portsAttributes": { "5251": { "label": "NUCLAUD", "onAutoForward": "openBrowser" } },
+  "customizations": { "vscode": { "extensions": ["ms-dotnettools.csdevkit"] } }
+}

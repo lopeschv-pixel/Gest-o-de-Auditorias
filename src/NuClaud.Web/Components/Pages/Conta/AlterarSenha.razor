@@ -1,0 +1,88 @@
+@page "/alterar-senha"
+@layout LayoutSimples
+@attribute [Authorize]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject UsuarioServico Usuarios
+@inject NavigationManager Nav
+
+<PageTitle>Alterar senha — NUCLAUD</PageTitle>
+
+<div class="tela-entrada">
+    <div class="lado-imagem" aria-hidden="true">
+        <div><div class="marca-nome" style="color:#fff;font-size:2.2rem"><span class="ponto"></span>NUCLAUD</div></div>
+    </div>
+    <div class="lado-form">
+        <div class="form-entrada">
+            <h1>Alterar senha</h1>
+            @if (_obrigatoria)
+            {
+                <div class="alerta alerta-info" role="note">Por segurança, defina uma nova senha antes de continuar (a senha atual é temporária).</div>
+            }
+            <p class="texto-suave">A nova senha deve ter pelo menos 10 caracteres, com letras e números.</p>
+            @if (_erros.Count > 0)
+            {
+                <div class="alerta alerta-erro" role="alert"><ul>@foreach (var e in _erros) { <li>@e</li> }</ul></div>
+            }
+            <EditForm Model="Modelo" method="post" OnValidSubmit="SalvarAsync" FormName="alterar-senha" Enhance="false">
+                <DataAnnotationsValidator />
+                <div class="campo">
+                    <label for="atual">Senha atual</label>
+                    <InputText id="atual" type="password" @bind-Value="Modelo.Atual" autocomplete="current-password" />
+                    <ValidationMessage For="() => Modelo.Atual" />
+                </div>
+                <div class="campo">
+                    <label for="nova">Nova senha</label>
+                    <InputText id="nova" type="password" @bind-Value="Modelo.Nova" autocomplete="new-password" />
+                    <ValidationMessage For="() => Modelo.Nova" />
+                </div>
+                <div class="campo">
+                    <label for="confirmacao">Confirme a nova senha</label>
+                    <InputText id="confirmacao" type="password" @bind-Value="Modelo.Confirmacao" autocomplete="new-password" />
+                    <ValidationMessage For="() => Modelo.Confirmacao" />
+                </div>
+                <div class="linha-acoes">
+                    <button type="submit" class="btn btn-primario">Salvar nova senha</button>
+                    @if (!_obrigatoria) { <a class="btn btn-secundario" href="/calendario">Cancelar</a> }
+                </div>
+            </EditForm>
+            <form method="post" action="/conta/sair" style="margin-top:1rem">
+                <AntiforgeryToken />
+                <button type="submit" class="btn btn-secundario btn-pequeno">Sair</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm] private ModeloSenha Modelo { get; set; } = new();
+    private readonly List<string> _erros = new();
+    private bool _obrigatoria;
+
+    protected override void OnInitialized() => _obrigatoria = HttpContext.User.HasClaim(ClaimsNuclaud.TrocarSenha, "1");
+
+    private async Task SalvarAsync()
+    {
+        var dados = ClaimsNuclaud.Ler(HttpContext.User);
+        if (dados == null) { Nav.NavigateTo("/entrar", true); return; }
+        try
+        {
+            var u = await Usuarios.AlterarSenhaAsync(dados.Value.Id, Modelo.Atual, Modelo.Nova, Modelo.Confirmacao);
+            await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ClaimsNuclaud.Criar(u));
+            Nav.NavigateTo("/calendario?senha=alterada", forceLoad: true);
+        }
+        catch (RegraNegocioException ex) { _erros.AddRange(ex.Erros); }
+        catch (NaoEncontradoException) { Nav.NavigateTo("/entrar", true); }
+        Modelo = new();
+    }
+
+    private sealed class ModeloSenha
+    {
+        [Required(ErrorMessage = "Informe a senha atual.")] public string? Atual { get; set; }
+        [Required(ErrorMessage = "Informe a nova senha.")] public string? Nova { get; set; }
+        [Required(ErrorMessage = "Confirme a nova senha.")] public string? Confirmacao { get; set; }
+    }
+}

@@ -1,0 +1,18 @@
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NaoEncontrado)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated == true)
+                {
+                    <NuClaud.Web.Components.Pages.AcessoNegado />
+                }
+                else
+                {
+                    <RedirecionarEntrada />
+                }
+            </NotAuthorized>
+            <Authorizing><p class="carregando">Verificando acesso…</p></Authorizing>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

@@ -1,0 +1,155 @@
+@* Seleção múltipla (ou única) com resumo, busca, "Concluir seleção", Escape e clique fora para fechar. *@
+<div class="seletor" @onkeydown="Tecla">
+    <button type="button" id="@Id" class="seletor-gatilho @(Invalido ? "invalido" : "")" aria-haspopup="listbox" aria-expanded="@_aberto.ToString().ToLowerInvariant()"
+            aria-describedby="@AriaDescricao" disabled="@Desabilitado" @onclick="Alternar">
+        @if (_selecionadas.Count == 0)
+        {
+            <span class="placeholder">@Placeholder</span>
+        }
+        else
+        {
+            <span class="seletor-resumo">
+                @foreach (var o in _selecionadas.Take(MaxResumo))
+                {
+                    <span class="etiqueta">@o.Texto</span>
+                }
+                @if (_selecionadas.Count > MaxResumo)
+                {
+                    <span class="etiqueta">+ @(_selecionadas.Count - MaxResumo) @(_selecionadas.Count - MaxResumo == 1 ? "outro" : "outros")</span>
+                }
+            </span>
+        }
+    </button>
+    @if (_aberto)
+    {
+        <div class="seletor-fundo" @onclick="Fechar"></div>
+        <div class="seletor-painel" role="listbox" aria-multiselectable="@((!Unico).ToString().ToLowerInvariant())" aria-label="@Rotulo">
+            @if (MostrarBusca)
+            {
+                <div class="seletor-busca">
+                    <input type="search" placeholder="Buscar…" aria-label="Buscar em @Rotulo" @bind="_busca" @bind:event="oninput" @ref="_refBusca" />
+                </div>
+            }
+            <div class="seletor-lista">
+                @{ string? grupoAtual = null; var visiveis = Visiveis().ToList(); }
+                @if (visiveis.Count == 0)
+                {
+                    <div class="texto-suave" style="padding:.6rem 0">@(Opcoes.Count == 0 ? SemOpcoes : "Nenhum item encontrado.")</div>
+                }
+                @foreach (var o in visiveis)
+                {
+                    if (o.Grupo != grupoAtual)
+                    {
+                        grupoAtual = o.Grupo;
+                        if (grupoAtual != null) { <div class="seletor-grupo">@grupoAtual</div> }
+                    }
+                    var marcado = Selecionados.Contains(o.Valor);
+                    <label class="marcador @(o.Desabilitado && !marcado ? "desabilitado" : "")">
+                        @if (Unico)
+                        {
+                            <input type="radio" name="@($"{Id}-radio")" checked="@marcado" disabled="@(o.Desabilitado && !marcado)" @onchange="() => Escolher(o)" />
+                        }
+                        else
+                        {
+                            <input type="checkbox" checked="@marcado" disabled="@(o.Desabilitado && !marcado)" @onchange="() => Marcar(o)" />
+                        }
+                        <span>@o.Texto @if (o.Detalhe != null) { <span class="detalhe">@o.Detalhe</span> }</span>
+                    </label>
+                }
+            </div>
+            <div class="seletor-rodape">
+                <span class="contagem">@(Unico ? (_selecionadas.Count == 0 ? "Nenhum selecionado" : "1 selecionado") : $"{_selecionadas.Count} selecionado(s)")</span>
+                <span class="linha-acoes">
+                    @if (!Unico && Selecionados.Count > 0 && PermitirLimpar)
+                    {
+                        <button type="button" class="btn btn-secundario btn-pequeno" @onclick="Limpar">Limpar</button>
+                    }
+                    <button type="button" class="btn btn-primario btn-pequeno" @onclick="Fechar">Concluir seleção</button>
+                </span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = "sel-" + Guid.NewGuid().ToString("N")[..8];
+    [Parameter] public string Rotulo { get; set; } = "";
+    [Parameter] public string Placeholder { get; set; } = "Selecione…";
+    [Parameter] public string SemOpcoes { get; set; } = "Nenhuma opção disponível.";
+    [Parameter] public IReadOnlyList<OpcaoSelecao> Opcoes { get; set; } = Array.Empty<OpcaoSelecao>();
+    [Parameter] public HashSet<int> Selecionados { get; set; } = new();
+    [Parameter] public EventCallback<HashSet<int>> SelecionadosChanged { get; set; }
+    [Parameter] public bool Unico { get; set; }
+    [Parameter] public bool Desabilitado { get; set; }
+    [Parameter] public bool Invalido { get; set; }
+    [Parameter] public bool PermitirLimpar { get; set; } = true;
+    [Parameter] public int MaxResumo { get; set; } = 6;
+    [Parameter] public string? AriaDescricao { get; set; }
+    /// <summary>Itens que não podem ser desmarcados (ex.: requisitos obrigatórios).</summary>
+    [Parameter] public IReadOnlySet<int>? Travados { get; set; }
+
+    private bool _aberto;
+    private string _busca = "";
+    private ElementReference _refBusca;
+    private bool _focar;
+    private List<OpcaoSelecao> _selecionadas = new();
+
+    private bool MostrarBusca => Opcoes.Count > 8;
+
+    protected override void OnParametersSet() =>
+        _selecionadas = Opcoes.Where(o => Selecionados.Contains(o.Valor)).ToList();
+
+    private IEnumerable<OpcaoSelecao> Visiveis()
+    {
+        var t = RegrasCalendario.SemAcento(_busca.Trim());
+        return t.Length == 0 ? Opcoes : Opcoes.Where(o => RegrasCalendario.SemAcento(o.Texto + " " + o.Grupo).Contains(t));
+    }
+
+    private void Alternar()
+    {
+        _aberto = !_aberto;
+        _busca = "";
+        _focar = _aberto;
+    }
+
+    private void Fechar() => _aberto = false;
+
+    private async Task Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _aberto) { _aberto = false; await Task.CompletedTask; }
+    }
+
+    private async Task Marcar(OpcaoSelecao o)
+    {
+        var novo = new HashSet<int>(Selecionados);
+        if (!novo.Remove(o.Valor))
+        {
+            if (o.Desabilitado) return;
+            novo.Add(o.Valor);
+        }
+        else if (Travados?.Contains(o.Valor) == true) return;
+        await SelecionadosChanged.InvokeAsync(novo);
+    }
+
+    private async Task Escolher(OpcaoSelecao o)
+    {
+        if (o.Desabilitado) return;
+        await SelecionadosChanged.InvokeAsync(new HashSet<int> { o.Valor });
+        _aberto = false;
+    }
+
+    private async Task Limpar()
+    {
+        var novo = Travados == null ? new HashSet<int>() : new HashSet<int>(Selecionados.Where(Travados.Contains));
+        await SelecionadosChanged.InvokeAsync(novo);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (_focar && _aberto && MostrarBusca)
+        {
+            _focar = false;
+            try { await _refBusca.FocusAsync(); } catch { }
+        }
+    }
+}

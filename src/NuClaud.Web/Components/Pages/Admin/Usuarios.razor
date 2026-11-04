@@ -1,0 +1,168 @@
+@page "/admin/usuarios"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject UsuarioServico UsuariosSrv
+@inject AuditorServico AuditoresSrv
+
+<PageTitle>Cadastrar usuários — NUCLAUD</PageTitle>
+<PageHeader Titulo="Cadastrar usuários" Subtitulo="Acesso ao sistema. Estar cadastrado como auditor não concede acesso nem perfil de administrador.">
+    <Migalhas><a href="/admin">Administração do sistema</a> › Usuários</Migalhas>
+    <ChildContent><button type="button" class="btn btn-destaque" @onclick="Novo"><Icone Nome="mais" />Novo usuário</button></ChildContent>
+</PageHeader>
+
+<div class="conteudo">
+    @if (ErroCarga != null) { <div class="alerta alerta-erro">@ErroCarga</div> }
+    @if (_edicao == null && _senhaPara == null) { <ListaErros Erros="Erros" /> }
+    <div class="tabela-wrap">
+        <table class="tabela">
+            <thead><tr><th>Nome da rede</th><th>Nome completo</th><th>E-mail</th><th>Perfil</th><th>Auditor vinculado</th><th>Situação</th><th>Último acesso</th><th class="acoes">Ações</th></tr></thead>
+            <tbody>
+                @foreach (var u in _lista)
+                {
+                    <tr>
+                        <td><strong>@u.NomeRede</strong></td>
+                        <td>@u.NomeCompleto</td>
+                        <td>@u.Email</td>
+                        <td><span class="etiqueta @(u.Perfil == PerfilUsuario.Administrador ? "etiqueta-admin" : "etiqueta-info")">@u.Perfil.Texto()</span></td>
+                        <td>@(u.AuditorNome ?? "—")</td>
+                        <td>
+                            <span class="etiqueta @(u.Ativo ? "etiqueta-ativo" : "etiqueta-inativo")">@(u.Ativo ? "Ativo" : "Inativo")</span>
+                            @if (u.Bloqueado) { <span class="etiqueta etiqueta-aviso">Bloqueado temporariamente</span> }
+                        </td>
+                        <td>@FusoHorario.Formatar(u.UltimoAcessoUtc)</td>
+                        <td class="acoes">
+                            <button type="button" class="btn btn-secundario btn-pequeno" @onclick="() => Editar(u)"><Icone Nome="editar" />Editar</button>
+                            <button type="button" class="btn btn-secundario btn-pequeno" @onclick="() => { Erros.Clear(); _senhaPara = u; _senha = string.Empty; }">Redefinir senha</button>
+                            <button type="button" class="btn btn-perigo btn-pequeno" @onclick="() => Excluir(u)"><Icone Nome="excluir" />Excluir</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="texto-suave pequeno" style="margin-top:.8rem">O sistema impede excluir, inativar ou retirar o perfil do último administrador ativo. Prefira inativar usuários que já usaram o sistema; o histórico mantém o nome de quem fez cada alteração.</p>
+</div>
+
+@if (_edicao != null)
+{
+    <Dialogo Titulo="@(_edicao.Id == null ? "Novo usuário" : "Editar usuário")" AoFechar="() => _edicao = null">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <div class="grade">
+                <div class="campo col-6">
+                    <label for="rede" class="obrigatorio">Nome da rede</label>
+                    <input id="rede" type="text" maxlength="64" autocapitalize="none" spellcheck="false" @bind="_edicao.NomeRede" />
+                    <span class="ajuda">Identificador de acesso (ex.: login da rede corporativa).</span>
+                </div>
+                <div class="campo col-6">
+                    <label for="email" class="obrigatorio">E-mail</label>
+                    <input id="email" type="email" maxlength="254" @bind="_edicao.Email" />
+                </div>
+                <div class="campo col-12">
+                    <label for="nome" class="obrigatorio">Nome completo</label>
+                    <input id="nome" type="text" maxlength="200" @bind="_edicao.NomeCompleto" />
+                </div>
+                <div class="campo col-6">
+                    <span class="rotulo obrigatorio" id="rot-perfil">Perfil</span>
+                    <div class="opcoes-radio" role="radiogroup" aria-labelledby="rot-perfil">
+                        <label class="marcador"><input type="radio" name="perfil" checked="@(_edicao.Perfil == PerfilUsuario.Usuario)" @onchange="() => _edicao.Perfil = PerfilUsuario.Usuario" />Usuário</label>
+                        <label class="marcador"><input type="radio" name="perfil" checked="@(_edicao.Perfil == PerfilUsuario.Administrador)" @onchange="() => _edicao.Perfil = PerfilUsuario.Administrador" />Administrador</label>
+                    </div>
+                </div>
+                <div class="campo col-6">
+                    <label for="auditor">Vínculo com cadastro de auditor</label>
+                    <select id="auditor" value="@(_edicao.AuditorId?.ToString() ?? "")" @onchange="e => _edicao.AuditorId = int.TryParse(e.Value?.ToString(), out var a) ? a : null">
+                        <option value="">Sem vínculo</option>
+                        @foreach (var a in _auditores.Where(a => a.UsuarioId == null || a.UsuarioId == _edicao.Id || a.Id == _edicao.AuditorId))
+                        {
+                            <option value="@a.Id">@a.NomeCompleto@(a.Ativo ? "" : " (inativo)")</option>
+                        }
+                    </select>
+                    <span class="ajuda">Necessário para o usuário atuar como auditor líder nas auditorias.</span>
+                </div>
+                @if (_edicao.Id == null)
+                {
+                    <div class="campo col-12">
+                        <label for="senha" class="obrigatorio">Senha inicial (temporária)</label>
+                        <input id="senha" type="password" autocomplete="new-password" @bind="_edicao.SenhaInicial" />
+                        <span class="ajuda">Mínimo de 10 caracteres, com letras e números. O usuário deverá trocá-la no primeiro acesso.</span>
+                    </div>
+                }
+                <div class="col-12"><label class="marcador"><input type="checkbox" @bind="_edicao.Ativo" />Ativo</label></div>
+            </div>
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="() => _edicao = null">Cancelar</button>
+            <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="Salvar">Salvar usuário</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@if (_senhaPara != null)
+{
+    <Dialogo Titulo="@($"Redefinir senha de {_senhaPara.NomeRede}")" AoFechar="() => _senhaPara = null">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <p>Defina uma senha temporária. A sessão atual do usuário será encerrada e ele deverá trocá-la no próximo acesso.</p>
+            <div class="campo">
+                <label for="nova-senha" class="obrigatorio">Senha temporária</label>
+                <input id="nova-senha" type="password" autocomplete="new-password" @bind="_senha" />
+            </div>
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="() => _senhaPara = null">Cancelar</button>
+            <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="RedefinirSenha">Redefinir senha</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@code {
+    private List<UsuarioResumo> _lista = new();
+    private List<Auditor> _auditores = new();
+    private UsuarioEdicao? _edicao;
+    private UsuarioResumo? _senhaPara;
+    private string _senha = "";
+
+    protected override async Task OnInitializedAsync() => await Carregar(Recarregar);
+
+    private async Task Recarregar()
+    {
+        _lista = await UsuariosSrv.ListarAsync(await ObterAtorAsync());
+        _auditores = await AuditoresSrv.ListarAsync();
+    }
+
+    private void Novo() { Erros.Clear(); _edicao = new UsuarioEdicao(); }
+
+    private void Editar(UsuarioResumo u)
+    {
+        Erros.Clear();
+        _edicao = new UsuarioEdicao { Id = u.Id, Versao = u.Versao, NomeRede = u.NomeRede, NomeCompleto = u.NomeCompleto, Email = u.Email, Perfil = u.Perfil, Ativo = u.Ativo, AuditorId = u.AuditorId };
+    }
+
+    private async Task Salvar()
+    {
+        if (_edicao == null) return;
+        if (await Executar(async () => await UsuariosSrv.SalvarAsync(await ObterAtorAsync(), _edicao), "Usuário salvo com sucesso."))
+        {
+            _edicao = null;
+            await Recarregar();
+        }
+    }
+
+    private async Task RedefinirSenha()
+    {
+        if (_senhaPara == null) return;
+        if (await Executar(async () => await UsuariosSrv.RedefinirSenhaAsync(await ObterAtorAsync(), _senhaPara.Id, _senha), "Senha temporária definida."))
+        {
+            _senhaPara = null;
+            await Recarregar();
+        }
+    }
+
+    private async Task Excluir(UsuarioResumo u)
+    {
+        if (!await Confirmacao.ConfirmarAsync("Excluir usuário", $"Deseja excluir o usuário {u.NomeRede} ({u.NomeCompleto})? Se ele já utilizou o sistema, considere inativá-lo.", "Excluir usuário", true)) return;
+        if (await Executar(async () => await UsuariosSrv.ExcluirAsync(await ObterAtorAsync(), u.Id), "Usuário excluído."))
+            await Recarregar();
+    }
+}

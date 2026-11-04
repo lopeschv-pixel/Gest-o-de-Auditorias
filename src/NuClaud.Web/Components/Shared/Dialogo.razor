@@ -1,0 +1,31 @@
+<div class="dialogo-fundo" @onclick="AoFechar" @onkeydown="Tecla">
+    <div class="dialogo @(Largo ? "largo" : "")" role="@Papel" aria-modal="true" aria-labelledby="@_idTitulo" @onclick:stopPropagation="true" tabindex="-1" @ref="_ref">
+        <header>
+            <h2 id="@_idTitulo">@Titulo</h2>
+            <button type="button" class="btn-fechar" aria-label="Fechar" @onclick="AoFechar">×</button>
+        </header>
+        <div class="corpo">@Corpo</div>
+        @if (Rodape != null) { <footer>@Rodape</footer> }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public RenderFragment? Corpo { get; set; }
+    [Parameter] public RenderFragment? Rodape { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+    [Parameter] public bool Largo { get; set; }
+    [Parameter] public string Papel { get; set; } = "dialog";
+    private readonly string _idTitulo = "dlg-" + Guid.NewGuid().ToString("N")[..8];
+    private ElementReference _ref;
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (first) { try { await _ref.FocusAsync(); } catch { } }
+    }
+
+    private async Task Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await AoFechar.InvokeAsync();
+    }
+}

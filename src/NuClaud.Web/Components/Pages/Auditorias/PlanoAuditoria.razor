@@ -1,0 +1,255 @@
+@page "/auditorias/{Id:int}/plano"
+@attribute [Authorize]
+@inherits PaginaBase
+@using System.Globalization
+@inject ProgramacaoServico Programacao
+@inject PlanoServico Planos
+
+<PageTitle>Plano @(_a?.Codigo) — NUCLAUD</PageTitle>
+<PageHeader Titulo="Plano de Auditoria" Subtitulo="@(_a == null ? null : $"{_a.Codigo} · {(_a.Tipo == TipoAuditoria.Interna ? "Auditoria interna" : "Auditoria de fornecedores")}")">
+    <Migalhas><a href="/calendario">Calendário</a> › <a href="/auditorias/@Id">@(_a?.Codigo)</a> › Plano</Migalhas>
+    <ChildContent>
+        @if (_a?.Plano != null)
+        {
+            <a class="btn btn-claro" href="/pdf/plano/@Id" target="_blank" rel="noopener"><Icone Nome="pdf" />Baixar PDF</a>
+        }
+    </ChildContent>
+</PageHeader>
+
+<NavigationLock ConfirmExternalNavigation="_sujo" OnBeforeInternalNavigation="ConfirmarSaida" />
+
+<div class="conteudo">
+    @if (ErroCarga != null)
+    {
+        <div class="alerta alerta-erro" role="alert">@ErroCarga</div>
+    }
+    else if (_a == null || Ator == null)
+    {
+        <p class="carregando">Carregando…</p>
+    }
+    else
+    {
+        <ListaErros Erros="Erros" />
+        @if (_a.Relatorio?.Situacao == SituacaoRelatorio.Concluido)
+        {
+            <div class="alerta alerta-info" role="note">O relatório desta auditoria está concluído; o plano está disponível apenas para leitura.</div>
+        }
+        else if (!_podeEditar)
+        {
+            <div class="alerta alerta-info" role="note">Somente o auditor líder designado ou um administrador pode alterar este plano. Você está no modo de leitura.</div>
+        }
+        else if (!_podeGerais)
+        {
+            <div class="alerta alerta-info" role="note">Como auditor líder, você pode alterar apenas as <strong>datas e horários</strong>. Os demais dados são definidos pela administração.</div>
+        }
+        @if (_a.Relatorio != null && _podeEditar)
+        {
+            <div class="alerta alerta-aviso" role="note">O relatório já foi iniciado. Alterações no plano serão registradas no histórico da auditoria.</div>
+        }
+        @if (_a.Plano == null && _podeEditar)
+        {
+            <div class="alerta alerta-info" role="note">Os dados abaixo foram herdados da programação. Defina as datas e os horários e clique em <strong>Salvar plano</strong>.</div>
+        }
+
+        <form @onsubmit="Salvar" @onsubmit:preventDefault="true" novalidate>
+            <section class="cartao">
+                <div class="cartao-cabecalho">
+                    <h2 class="secao-titulo" style="margin:0;border:0">Datas e horários</h2>
+                    @if (_podeEditar) { <button type="button" class="btn btn-secundario btn-pequeno" @onclick="Adicionar"><Icone Nome="mais" />Adicionar período</button> }
+                </div>
+                <p class="texto-suave pequeno">Inclua um ou mais dias e, se necessário, mais de um período no mesmo dia.</p>
+                @for (int i = 0; i < _m.Periodos.Count; i++)
+                {
+                    var idx = i;
+                    var p = _m.Periodos[idx];
+                    <div class="periodo-linha" role="group" aria-label="Período @(idx + 1)">
+                        <div class="campo">
+                            <label for="data-@idx" class="obrigatorio">Data (período @(idx + 1))</label>
+                            <input id="data-@idx" type="date" value="@(p.Data?.ToString("yyyy-MM-dd"))" disabled="@(!_podeEditar)" @onchange="e => DefinirData(p, e)" />
+                            @if (p.Data is DateOnly d) { <span class="ajuda">@Rotulos.DiaSemana(d)</span> }
+                        </div>
+                        <div class="campo">
+                            <label for="ini-@idx" class="obrigatorio">Horário inicial</label>
+                            <input id="ini-@idx" type="time" value="@(p.HoraInicio?.ToString("HH:mm"))" disabled="@(!_podeEditar)" @onchange="e => p.HoraInicio = Hora(e)" />
+                        </div>
+                        <div class="campo">
+                            <label for="fim-@idx" class="obrigatorio">Horário final</label>
+                            <input id="fim-@idx" type="time" value="@(p.HoraFim?.ToString("HH:mm"))" disabled="@(!_podeEditar)" @onchange="e => p.HoraFim = Hora(e)" />
+                            @if (p.HoraInicio != null && p.HoraFim != null && p.HoraFim <= p.HoraInicio) { <span class="msg-erro">Deve ser posterior ao inicial.</span> }
+                        </div>
+                        @if (_podeEditar)
+                        {
+                            <button type="button" class="btn btn-perigo btn-pequeno" aria-label="Excluir período @(idx + 1)" @onclick="() => Remover(idx)"><Icone Nome="excluir" />Excluir</button>
+                        }
+                    </div>
+                }
+                @if (_m.Periodos.Count == 0) { <p class="texto-suave">Nenhum período. Use “Adicionar período”.</p> }
+            </section>
+
+            <section class="cartao">
+                <h2 class="secao-titulo">Identificação</h2>
+                <dl class="lista-def">
+                    <dt>Código</dt><dd><strong>@_a.Codigo</strong></dd>
+                    <dt>Tipo</dt><dd>@(_a.Tipo == TipoAuditoria.Interna ? "Interna" : "Fornecedores")</dd>
+                    <dt>Normas</dt><dd>@string.Join(", ", _a.Normas.Select(n => n.NomeNorma))</dd>
+                    @if (_a.Tipo == TipoAuditoria.Interna)
+                    {
+                        <dt>Áreas</dt><dd>@Lista(_a.Areas.Select(x => x.NomeArea))</dd>
+                        <dt>Macroprocessos</dt><dd>@Lista(_a.Macroprocessos.Select(x => x.NomeMacroprocesso))</dd>
+                        <dt>Processos</dt><dd>@Lista(_a.Processos.Select(x => x.NomeProcesso))</dd>
+                    }
+                    else
+                    {
+                        <dt>Fornecedor</dt><dd>@_a.FornecedorNome</dd>
+                        <dt>CNPJ</dt><dd>@_a.FornecedorCnpj</dd>
+                        <dt>Endereço</dt><dd>@_a.FornecedorEndereco</dd>
+                        <dt>Escopo de fornecimento</dt><dd style="white-space:pre-wrap">@_a.EscopoFornecimento</dd>
+                    }
+                </dl>
+            </section>
+
+            <section class="cartao">
+                <h2 class="secao-titulo">Local e contato</h2>
+                <div class="grade">
+                    <div class="campo col-12">
+                        <label for="local">Local</label>
+                        <input id="local" type="text" maxlength="300" value="@_m.Local" disabled="@(!_podeGerais)" @onchange="e => { _m.Local = e.Value?.ToString(); Mudou(); }" />
+                    </div>
+                    <div class="campo col-6">
+                        <label for="gestor">Nome do gestor</label>
+                        <input id="gestor" type="text" maxlength="200" value="@_m.GestorNome" disabled="@(!_podeGerais)" @onchange="e => { _m.GestorNome = e.Value?.ToString(); Mudou(); }" />
+                    </div>
+                    <div class="campo col-6">
+                        <label for="email">E-mail do gestor</label>
+                        <input id="email" type="email" maxlength="254" value="@_m.GestorEmail" disabled="@(!_podeGerais)" @onchange="e => { _m.GestorEmail = e.Value?.ToString(); Mudou(); }" />
+                        @if (!string.IsNullOrWhiteSpace(_m.GestorEmail) && !Validacoes.EmailValido(_m.GestorEmail)) { <span class="msg-erro">E-mail inválido.</span> }
+                    </div>
+                </div>
+            </section>
+
+            @if (_a.Tipo == TipoAuditoria.Fornecedor)
+            {
+                <section class="cartao">
+                    <h2 class="secao-titulo">Objetivo e escopo</h2>
+                    <div class="grade">
+                        <div class="campo col-12">
+                            <label for="objetivo">Objetivo</label>
+                            <textarea id="objetivo" rows="3" maxlength="4000" disabled="@(!_podeGerais)" @onchange="e => { _m.Objetivo = e.Value?.ToString(); Mudou(); }">@_m.Objetivo</textarea>
+                        </div>
+                        <div class="campo col-12">
+                            <label for="escopo">Escopo</label>
+                            <textarea id="escopo" rows="3" maxlength="4000" disabled="@(!_podeGerais)" @onchange="e => { _m.Escopo = e.Value?.ToString(); Mudou(); }">@_m.Escopo</textarea>
+                            <span class="ajuda">Escopo de fornecimento (programação): @_a.EscopoFornecimento</span>
+                        </div>
+                    </div>
+                </section>
+            }
+
+            <section class="cartao">
+                <h2 class="secao-titulo">Equipe auditora</h2>
+                <dl class="lista-def">
+                    <dt>Auditor líder</dt><dd>@Lista(_a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Lider).Select(p => p.NomeAuditor))</dd>
+                    <dt>Auditores</dt><dd>@Lista(_a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Auditor).Select(p => p.NomeAuditor))</dd>
+                    @if (_a.Participantes.Any(p => p.Funcao == FuncaoAuditoria.Observador))
+                    {
+                        <dt>Observadores</dt><dd>@Lista(_a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Observador).Select(p => p.NomeAuditor))</dd>
+                    }
+                </dl>
+            </section>
+
+            <section class="cartao">
+                <h2 class="secao-titulo">Requisitos</h2>
+                @if (_a.Requisitos.Count == 0)
+                {
+                    <div class="alerta alerta-aviso">Esta auditoria ainda não tem requisitos. @(Ator.EhAdministrador ? "Inclua-os em Editar programação." : "Solicite à administração.")</div>
+                }
+                else
+                {
+                    <div class="tabela-wrap">
+                        <table class="tabela">
+                            <thead><tr><th>Norma</th><th>Requisito</th></tr></thead>
+                            <tbody>
+                                @foreach (var r in _a.Requisitos) { <tr><td>@r.NomeNorma</td><td>@OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)</td></tr> }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                @if (_podeEditar)
+                {
+                    <div class="barra-salvar">
+                        <span class="estado @(_sujo ? "sujo" : "")">@(_sujo ? "Alterações não salvas" : _a.Plano == null ? "Plano ainda não salvo" : $"Salvo por {_a.Plano.AlteradoPor ?? _a.Plano.CriadoPor}")</span>
+                        <a class="btn btn-secundario" href="/auditorias/@Id">Voltar</a>
+                        <button type="submit" class="btn btn-primario" disabled="@Ocupado"><Icone Nome="salvar" />@(Ocupado ? "Salvando…" : "Salvar plano")</button>
+                    </div>
+                }
+            </section>
+        </form>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Auditoria? _a;
+    private PlanoEdicao _m = new();
+    private bool _podeEditar, _podeGerais, _sujo;
+
+    private static string Lista(IEnumerable<string> l) { var x = l.ToList(); return x.Count == 0 ? "—" : string.Join(", ", x); }
+
+    protected override async Task OnInitializedAsync() => await Recarregar();
+
+    private async Task Recarregar()
+    {
+        await Carregar(async () =>
+        {
+            var ator = await ObterAtorAsync();
+            _a = await Programacao.ObterDetalheAsync(ator, Id);
+            _m = PlanoServico.ParaEdicao(_a);
+            _podeEditar = Permissoes.PodeEditarPlano(ator, _a);
+            _podeGerais = Permissoes.PodeEditarCamposGeraisPlano(ator, _a);
+            _sujo = false;
+        });
+    }
+
+    private void Mudou() => _sujo = true;
+
+    private void DefinirData(PeriodoEdicao p, ChangeEventArgs e)
+    {
+        p.Data = DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+        Mudou();
+    }
+
+    private TimeOnly? Hora(ChangeEventArgs e)
+    {
+        Mudou();
+        return TimeOnly.TryParseExact(e.Value?.ToString(), new[] { "HH:mm", "HH:mm:ss" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out var t) ? t : null;
+    }
+
+    private void Adicionar()
+    {
+        var ultimo = _m.Periodos.LastOrDefault();
+        _m.Periodos.Add(new PeriodoEdicao { Data = ultimo?.Data });
+        Mudou();
+    }
+
+    private async Task Remover(int idx)
+    {
+        var p = _m.Periodos[idx];
+        if (p.Data != null && !await Confirmacao.ConfirmarAsync("Excluir período", $"Excluir o período {idx + 1}? A exclusão só é gravada ao salvar o plano.", "Excluir período", true))
+            return;
+        _m.Periodos.RemoveAt(idx);
+        Mudou();
+    }
+
+    private async Task Salvar()
+    {
+        if (await Executar(async () => await Planos.SalvarAsync(await ObterAtorAsync(), _m), "Plano salvo com sucesso."))
+            await Recarregar();
+    }
+
+    private async Task ConfirmarSaida(LocationChangingContext ctx)
+    {
+        if (!_sujo) return;
+        if (!await Confirmacao.ConfirmarAsync("Sair sem salvar?", "Há alterações não salvas no plano. Deseja sair e descartá-las?", "Sair sem salvar", true))
+            ctx.PreventNavigation();
+    }
+}

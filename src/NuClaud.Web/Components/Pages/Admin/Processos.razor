@@ -1,0 +1,234 @@
+@page "/admin/processos"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject CadastroServico Cadastro
+@inject NormaServico NormasSrv
+
+<PageTitle>Macroprocessos e processos — NUCLAUD</PageTitle>
+<PageHeader Titulo="Macroprocessos e processos" Subtitulo="Normas aplicáveis e requisitos obrigatórios de cada processo.">
+    <Migalhas><a href="/admin">Administração do sistema</a> › Macroprocessos e processos</Migalhas>
+</PageHeader>
+
+<div class="conteudo">
+    @if (ErroCarga != null) { <div class="alerta alerta-erro">@ErroCarga</div> }
+    @if (_macroEdicao == null && _procEdicao == null) { <ListaErros Erros="Erros" /> }
+
+    <section class="cartao">
+        <div class="cartao-cabecalho">
+            <h2>Macroprocessos</h2>
+            <button type="button" class="btn btn-destaque btn-pequeno" @onclick="() => { Erros.Clear(); _macroEdicao = new MacroprocessoEdicao(); }"><Icone Nome="mais" />Novo macroprocesso</button>
+        </div>
+        <div class="tabela-wrap">
+            <table class="tabela">
+                <thead><tr><th>Nome</th><th>Processos</th><th>Situação</th><th class="acoes">Ações</th></tr></thead>
+                <tbody>
+                    @if (_macros.Count == 0) { <tr><td colspan="4" class="vazio">Nenhum macroprocesso cadastrado.</td></tr> }
+                    @foreach (var m in _macros)
+                    {
+                        <tr>
+                            <td><strong>@m.Nome</strong></td>
+                            <td>@_processos.Count(p => p.MacroprocessoId == m.Id)</td>
+                            <td><span class="etiqueta @(m.Ativo ? "etiqueta-ativo" : "etiqueta-inativo")">@(m.Ativo ? "Ativo" : "Inativo")</span></td>
+                            <td class="acoes">
+                                <button type="button" class="btn btn-secundario btn-pequeno" @onclick="() => { Erros.Clear(); _macroEdicao = new MacroprocessoEdicao { Id = m.Id, Versao = m.Versao, Nome = m.Nome, Ativo = m.Ativo }; }"><Icone Nome="editar" />Editar</button>
+                                <button type="button" class="btn btn-perigo btn-pequeno" @onclick="() => ExcluirMacro(m)"><Icone Nome="excluir" />Excluir</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="cartao">
+        <div class="cartao-cabecalho">
+            <h2>Processos</h2>
+            <button type="button" class="btn btn-destaque btn-pequeno" disabled="@(_macros.Count == 0)" @onclick="NovoProcesso"><Icone Nome="mais" />Novo processo</button>
+        </div>
+        <div class="tabela-wrap">
+            <table class="tabela">
+                <thead><tr><th>Processo</th><th>Macroprocesso</th><th>Normas e requisitos obrigatórios</th><th>Situação</th><th class="acoes">Ações</th></tr></thead>
+                <tbody>
+                    @if (_processos.Count == 0) { <tr><td colspan="5" class="vazio">Nenhum processo cadastrado.</td></tr> }
+                    @foreach (var p in _processos)
+                    {
+                        <tr>
+                            <td><strong>@p.Nome</strong></td>
+                            <td>@p.Macroprocesso?.Nome</td>
+                            <td class="pequeno">
+                                @foreach (var pn in p.Normas.OrderBy(x => NomeNorma(x.NormaId)))
+                                {
+                                    var codigos = p.RequisitosObrigatorios.Where(r => r.Requisito?.NormaId == pn.NormaId).Select(r => r.Requisito!).OrderBy(r => r.ChaveOrdenacao, StringComparer.Ordinal).Select(r => r.Codigo).ToList();
+                                    <div><strong>@NomeNorma(pn.NormaId):</strong> @(codigos.Count == 0 ? "sem requisitos obrigatórios" : string.Join(", ", codigos))</div>
+                                }
+                            </td>
+                            <td><span class="etiqueta @(p.Ativo ? "etiqueta-ativo" : "etiqueta-inativo")">@(p.Ativo ? "Ativo" : "Inativo")</span></td>
+                            <td class="acoes">
+                                <button type="button" class="btn btn-secundario btn-pequeno" @onclick="() => EditarProcesso(p)"><Icone Nome="editar" />Editar</button>
+                                <button type="button" class="btn btn-perigo btn-pequeno" @onclick="() => ExcluirProcesso(p)"><Icone Nome="excluir" />Excluir</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="texto-suave pequeno" style="margin-top:.8rem">Alterações ficam registradas no histórico. Auditorias já programadas mantêm a configuração de requisitos registrada no momento da programação.</p>
+    </section>
+</div>
+
+@if (_macroEdicao != null)
+{
+    <Dialogo Titulo="@(_macroEdicao.Id == null ? "Novo macroprocesso" : "Editar macroprocesso")" AoFechar="() => _macroEdicao = null">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <div class="campo"><label for="m-nome" class="obrigatorio">Nome</label><input id="m-nome" type="text" maxlength="150" @bind="_macroEdicao.Nome" /></div>
+            <label class="marcador" style="margin-top:.8rem"><input type="checkbox" @bind="_macroEdicao.Ativo" />Ativo</label>
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="() => _macroEdicao = null">Cancelar</button>
+            <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="SalvarMacro">Salvar macroprocesso</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@if (_procEdicao != null)
+{
+    <Dialogo Titulo="@(_procEdicao.Id == null ? "Novo processo" : "Editar processo")" Largo="true" AoFechar="() => _procEdicao = null">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <div class="grade">
+                <div class="campo col-6"><label for="p-nome" class="obrigatorio">Nome do processo</label><input id="p-nome" type="text" maxlength="150" @bind="_procEdicao.Nome" /></div>
+                <div class="campo col-6">
+                    <label for="p-macro" class="obrigatorio">Macroprocesso</label>
+                    <select id="p-macro" value="@_procEdicao.MacroprocessoId" @onchange="e => _procEdicao.MacroprocessoId = int.TryParse(e.Value?.ToString(), out var m) ? m : 0">
+                        <option value="0">Selecione…</option>
+                        @foreach (var m in _macros.Where(m => m.Ativo || m.Id == _procEdicao.MacroprocessoId)) { <option value="@m.Id">@m.Nome</option> }
+                    </select>
+                </div>
+                <div class="col-12"><label class="marcador"><input type="checkbox" @bind="_procEdicao.Ativo" />Ativo</label></div>
+            </div>
+            <h3 style="margin-top:1rem">Normas aplicáveis e requisitos obrigatórios</h3>
+            <p class="texto-suave pequeno">Marque as normas; abaixo de cada norma marcada, selecione os requisitos obrigatórios para este processo.</p>
+            <div class="campo" style="max-width:420px;margin-bottom:.8rem"><label for="p-busca">Filtrar requisitos</label><input id="p-busca" type="search" placeholder="Número ou título" @bind="_busca" @bind:event="oninput" /></div>
+            @foreach (var n in _normas.Where(n => n.Ativo || _procEdicao.NormaIds.Contains(n.Id)))
+            {
+                var marcada = _procEdicao.NormaIds.Contains(n.Id);
+                <div class="grupo-norma">
+                    <header>
+                        <label class="marcador" style="padding:0;min-height:auto"><input type="checkbox" checked="@marcada" @onchange="() => AlternarNorma(n.Id)" /><strong>@n.Nome</strong></label>
+                        @if (marcada) { <span class="texto-suave pequeno">@n.Requisitos.Count(r => _procEdicao.RequisitoIds.Contains(r.Id)) obrigatório(s)</span> }
+                    </header>
+                    @if (marcada)
+                    {
+                        <div class="lista-requisitos">
+                            @if (n.Requisitos.Count == 0) { <span class="texto-suave">Esta norma ainda não possui requisitos cadastrados.</span> }
+                            @foreach (var r in n.Requisitos.Where(r => (r.Ativo || _procEdicao.RequisitoIds.Contains(r.Id)) && Filtro(r)))
+                            {
+                                <label class="marcador">
+                                    <input type="checkbox" checked="@_procEdicao.RequisitoIds.Contains(r.Id)" disabled="@(!r.Ativo && !_procEdicao.RequisitoIds.Contains(r.Id))" @onchange="() => AlternarRequisito(r.Id)" />
+                                    <span>@OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo) @if (!r.Ativo) { <span class="etiqueta etiqueta-inativo">Inativo</span> }</span>
+                                </label>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="() => _procEdicao = null">Cancelar</button>
+            <button type="button" class="btn btn-primario" disabled="@Ocupado" @onclick="SalvarProcesso">Salvar processo</button>
+        </Rodape>
+    </Dialogo>
+}
+
+@code {
+    private List<Macroprocesso> _macros = new();
+    private List<Processo> _processos = new();
+    private List<Norma> _normas = new();
+    private MacroprocessoEdicao? _macroEdicao;
+    private ProcessoEdicao? _procEdicao;
+    private string _busca = "";
+
+    private string NomeNorma(int id) => _normas.FirstOrDefault(n => n.Id == id)?.Nome ?? "?";
+    private bool Filtro(Requisito r)
+    {
+        var t = RegrasCalendario.SemAcento(_busca.Trim());
+        return t.Length == 0 || RegrasCalendario.SemAcento(OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)).Contains(t);
+    }
+
+    protected override async Task OnInitializedAsync() => await Carregar(Recarregar);
+
+    private async Task Recarregar()
+    {
+        _macros = await Cadastro.ListarMacroprocessosAsync();
+        _processos = await Cadastro.ListarProcessosAsync();
+        _normas = await NormasSrv.ListarAsync(incluirRequisitos: true);
+    }
+
+    private void NovoProcesso() { Erros.Clear(); _busca = ""; _procEdicao = new ProcessoEdicao(); }
+
+    private void EditarProcesso(Processo p)
+    {
+        Erros.Clear(); _busca = "";
+        _procEdicao = new ProcessoEdicao
+        {
+            Id = p.Id, Versao = p.Versao, Nome = p.Nome, MacroprocessoId = p.MacroprocessoId, Ativo = p.Ativo,
+            NormaIds = p.Normas.Select(n => n.NormaId).ToHashSet(),
+            RequisitoIds = p.RequisitosObrigatorios.Select(r => r.RequisitoId).ToHashSet()
+        };
+    }
+
+    private async Task AlternarNorma(int normaId)
+    {
+        if (_procEdicao == null) return;
+        if (_procEdicao.NormaIds.Contains(normaId))
+        {
+            var reqs = _normas.First(n => n.Id == normaId).Requisitos.Where(r => _procEdicao.RequisitoIds.Contains(r.Id)).ToList();
+            if (reqs.Count > 0 && !await Confirmacao.ConfirmarAsync("Desmarcar norma", $"Os {reqs.Count} requisito(s) obrigatório(s) desta norma serão retirados do processo.", "Desmarcar"))
+                return;
+            _procEdicao.NormaIds.Remove(normaId);
+            foreach (var r in reqs) _procEdicao.RequisitoIds.Remove(r.Id);
+        }
+        else _procEdicao.NormaIds.Add(normaId);
+    }
+
+    private void AlternarRequisito(int id)
+    {
+        if (_procEdicao == null) return;
+        if (!_procEdicao.RequisitoIds.Remove(id)) _procEdicao.RequisitoIds.Add(id);
+    }
+
+    private async Task SalvarMacro()
+    {
+        if (_macroEdicao == null) return;
+        if (await Executar(async () => await Cadastro.SalvarMacroprocessoAsync(await ObterAtorAsync(), _macroEdicao), "Macroprocesso salvo com sucesso."))
+        {
+            _macroEdicao = null;
+            await Recarregar();
+        }
+    }
+
+    private async Task ExcluirMacro(Macroprocesso m)
+    {
+        if (!await Confirmacao.ConfirmarAsync("Excluir macroprocesso", $"Deseja excluir o macroprocesso \"{m.Nome}\"?", "Excluir", true)) return;
+        if (await Executar(async () => await Cadastro.ExcluirMacroprocessoAsync(await ObterAtorAsync(), m.Id), "Macroprocesso excluído."))
+            await Recarregar();
+    }
+
+    private async Task SalvarProcesso()
+    {
+        if (_procEdicao == null) return;
+        if (await Executar(async () => await Cadastro.SalvarProcessoAsync(await ObterAtorAsync(), _procEdicao), "Processo salvo com sucesso."))
+        {
+            _procEdicao = null;
+            await Recarregar();
+        }
+    }
+
+    private async Task ExcluirProcesso(Processo p)
+    {
+        if (!await Confirmacao.ConfirmarAsync("Excluir processo", $"Deseja excluir o processo \"{p.Nome}\"?", "Excluir", true)) return;
+        if (await Executar(async () => await Cadastro.ExcluirProcessoAsync(await ObterAtorAsync(), p.Id), "Processo excluído."))
+            await Recarregar();
+    }
+}

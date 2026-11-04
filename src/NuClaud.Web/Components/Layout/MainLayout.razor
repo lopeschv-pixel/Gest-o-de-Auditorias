@@ -1,0 +1,81 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager Nav
+@inject IConfiguration Config
+
+<a class="pular-conteudo" href="#conteudo-principal">Pular para o conteúdo</a>
+<div class="app">
+    @if (_menuAberto)
+    {
+        <div class="menu-fundo" @onclick="FecharMenu"></div>
+    }
+    <aside class="menu-lateral @(_menuAberto ? "aberto" : "")" aria-label="Menu principal">
+        <div class="marca">
+            <div class="marca-nome"><span class="ponto" aria-hidden="true"></span>NUCLAUD</div>
+            <div class="marca-sub">Gestão de auditorias · NUCLEP</div>
+        </div>
+        <AuthorizeView>
+            <Authorized>
+                @{ var admin = context.User.IsInRole("Administrador"); }
+                <nav>
+                    <ul class="nav">
+                        @if (admin)
+                        {
+                            <li><NavLink href="programacao"><Icone Nome="programar" />Programar auditorias</NavLink></li>
+                        }
+                        <li><NavLink href="calendario"><Icone Nome="calendario" />Calendário</NavLink></li>
+                        <li><NavLink href="planejamento" Match="NavLinkMatch.All"><Icone Nome="equipe" />Planejamento de auditores</NavLink></li>
+                        @if (admin)
+                        {
+                            <li class="sub"><NavLink href="planejamento/ranqueamento"><Icone Nome="ranking" />Ranqueamento de auditores</NavLink></li>
+                            <li class="grupo-titulo"><NavLink href="admin" Match="NavLinkMatch.All"><Icone Nome="admin" />Administração do sistema</NavLink></li>
+                            <li class="sub"><NavLink href="admin/identidade-visual"><Icone Nome="imagem" />Identidade visual</NavLink></li>
+                            <li class="sub"><NavLink href="admin/usuarios"><Icone Nome="usuario" />Cadastrar usuários</NavLink></li>
+                            <li class="sub"><NavLink href="admin/areas"><Icone Nome="area" />Cadastrar áreas</NavLink></li>
+                            <li class="sub"><NavLink href="admin/processos"><Icone Nome="processo" />Macroprocessos e processos</NavLink></li>
+                            <li class="sub"><NavLink href="admin/auditores"><Icone Nome="auditor" />Cadastrar auditores</NavLink></li>
+                            <li class="sub"><NavLink href="admin/normas"><Icone Nome="norma" />Cadastrar normas e requisitos</NavLink></li>
+                        }
+                    </ul>
+                </nav>
+                <div class="usuario-box">
+                    <div class="nome">@context.User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value</div>
+                    <div class="perfil">@context.User.Identity?.Name · @(admin ? "Administrador" : "Usuário")</div>
+                    <div class="acoes">
+                        <a class="btn btn-pequeno" href="/alterar-senha" data-enhance-nav="false">Alterar senha</a>
+                        <form method="post" action="/conta/sair">
+                            <AntiforgeryToken />
+                            <button type="submit" class="btn btn-pequeno">Sair</button>
+                        </form>
+                    </div>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </aside>
+
+    <div class="principal">
+        <div class="barra-movel">
+            <button type="button" class="btn-menu" aria-label="Abrir menu" aria-expanded="@_menuAberto.ToString().ToLowerInvariant()" @onclick="AlternarMenu">☰</button>
+            <span class="marca-nome"><span class="ponto" aria-hidden="true"></span>NUCLAUD</span>
+        </div>
+        @if (Config.GetValue("Demonstracao:Habilitada", false))
+        {
+            <div class="faixa-demo" role="note">Ambiente de demonstração e testes — os dados exibidos são fictícios e não devem ser usados como registros oficiais.</div>
+        }
+        <div id="conteudo-principal" tabindex="-1">
+            @Body
+        </div>
+    </div>
+</div>
+<NotificacaoHost />
+<ConfirmacaoHost />
+
+@code {
+    private bool _menuAberto;
+
+    protected override void OnInitialized() => Nav.LocationChanged += AoNavegar;
+    private void AoNavegar(object? s, LocationChangedEventArgs e) { _menuAberto = false; InvokeAsync(StateHasChanged); }
+    private void AlternarMenu() => _menuAberto = !_menuAberto;
+    private void FecharMenu() => _menuAberto = false;
+    public void Dispose() => Nav.LocationChanged -= AoNavegar;
+}

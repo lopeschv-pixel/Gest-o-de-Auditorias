@@ -1,0 +1,81 @@
+@page "/planejamento/ranqueamento"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject ConsultasServico Consultas
+@inject IRelogio Relogio
+
+<PageTitle>Ranqueamento de auditores — NUCLAUD</PageTitle>
+<PageHeader Titulo="Ranqueamento de auditores" Subtitulo="Apoio ao equilíbrio da distribuição de auditorias programadas. Não é avaliação de desempenho.">
+    <Migalhas><a href="/planejamento">Planejamento de auditores</a> › Ranqueamento</Migalhas>
+</PageHeader>
+
+<div class="conteudo">
+    @if (ErroCarga != null) { <div class="alerta alerta-erro">@ErroCarga</div> }
+    <section class="cartao">
+        <div class="filtros" style="grid-template-columns: 160px minmax(220px, 320px) 1fr">
+            <div class="campo">
+                <label for="ano">Ano</label>
+                <select id="ano" value="@_ano" @onchange="TrocarAno">
+                    @foreach (var a in _anos) { <option value="@a">@a</option> }
+                </select>
+            </div>
+            <div class="campo">
+                <label for="ordem">Ordenar por pontos</label>
+                <select id="ordem" value="@(_decrescente ? "desc" : "asc")" @onchange="TrocarOrdem">
+                    <option value="desc">Do maior para o menor</option>
+                    <option value="asc">Do menor para o maior</option>
+                </select>
+            </div>
+            <p class="texto-suave pequeno" style="margin:0">Pontuação por designação nas auditorias programadas do ano (realizadas ou não): <strong>Auditor líder = 2</strong>, <strong>Auditor = 1</strong>, <strong>Observador = 0</strong>. Cada auditoria conta uma vez por pessoa.</p>
+        </div>
+    </section>
+    <div class="tabela-wrap">
+        <table class="tabela">
+            <thead><tr><th>Posição</th><th>Nome</th><th>Como líder</th><th>Como auditor</th><th>Como observador</th><th>Total de pontos</th><th>Auditorias distintas</th></tr></thead>
+            <tbody>
+                @if (_linhas.Count == 0) { <tr><td colspan="7" class="vazio">Nenhum auditor.</td></tr> }
+                @{ var pos = 0; }
+                @foreach (var l in Ordenadas)
+                {
+                    pos++;
+                    <tr>
+                        <td>@pos</td>
+                        <td><strong>@l.Nome</strong></td>
+                        <td>@l.ComoLider</td>
+                        <td>@l.ComoAuditor</td>
+                        <td>@l.ComoObservador</td>
+                        <td><strong>@l.Pontos</strong></td>
+                        <td>@l.AuditoriasDistintas</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private int _ano;
+    private List<int> _anos = new();
+    private bool _decrescente = true;
+    private List<LinhaRanking> _linhas = new();
+
+    private IEnumerable<LinhaRanking> Ordenadas => _decrescente
+        ? _linhas.OrderByDescending(l => l.Pontos).ThenByDescending(l => l.AuditoriasDistintas).ThenBy(l => l.Nome)
+        : _linhas.OrderBy(l => l.Pontos).ThenBy(l => l.AuditoriasDistintas).ThenBy(l => l.Nome);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Carregar(async () =>
+        {
+            var atual = FusoHorario.AnoAtual(Relogio);
+            var anos = await Consultas.AnosDisponiveisAsync();
+            _anos = anos.Append(atual).Append(atual + 1).Distinct().OrderBy(x => x).ToList();
+            _ano = anos.Where(a => a >= atual).DefaultIfEmpty(atual).Min();
+            await Recarregar();
+        });
+    }
+
+    private async Task Recarregar() => _linhas = await Consultas.RankingAsync(await ObterAtorAsync(), _ano);
+    private void TrocarOrdem(ChangeEventArgs e) => _decrescente = (e.Value?.ToString() ?? "") == "desc";
+    private async Task TrocarAno(ChangeEventArgs e) { _ano = int.Parse(e.Value!.ToString()!); await Carregar(Recarregar); }
+}

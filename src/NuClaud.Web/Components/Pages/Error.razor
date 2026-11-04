@@ -1,0 +1,23 @@
+@page "/Error"
+@layout LayoutSimples
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Diagnostics
+
+<PageTitle>Erro — NUCLAUD</PageTitle>
+
+<div class="cartao" style="max-width:720px;margin:3rem auto;">
+    <h1>Não foi possível concluir a operação</h1>
+    <p>Ocorreu um erro inesperado. Os dados já salvos não foram afetados. Tente novamente; se o problema persistir, informe à equipe de suporte o código abaixo.</p>
+    @if (!string.IsNullOrEmpty(RequestId))
+    {
+        <p><strong>Código de referência:</strong> <code>@RequestId</code></p>
+    }
+    <a class="btn btn-primario" href="/">Voltar ao início</a>
+</div>
+
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+    private string? RequestId { get; set; }
+    protected override void OnInitialized() => RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}
