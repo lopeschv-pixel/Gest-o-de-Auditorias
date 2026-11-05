@@ -19,6 +19,16 @@ public static class Inicializacao
         var fabrica = sp.GetRequiredService<IDbContextFactory<NuClaudDbContext>>();
         var relogio = sp.GetRequiredService<IRelogio>();
 
+        // Aguarda o banco ficar disponível (ex.: servidor e SQL Server reiniciados ao mesmo tempo).
+        for (int tentativa = 1; ; tentativa++)
+        {
+            await using var teste = await fabrica.CreateDbContextAsync();
+            try { if (await teste.Database.CanConnectAsync()) break; }
+            catch (Exception ex) when (tentativa < 24) { log.LogWarning("Banco indisponível ({Msg}). Nova tentativa em 5 s.", ex.GetType().Name); }
+            if (tentativa >= 24) throw new InvalidOperationException("Não foi possível conectar ao banco de dados após 2 minutos. Verifique ConnectionStrings:NuClaud e o SQL Server.");
+            await Task.Delay(5000);
+        }
+
         await using (var db = await fabrica.CreateDbContextAsync())
         {
             if (cfg.GetValue("BancoDeDados:AplicarMigracoesAoIniciar", false))
