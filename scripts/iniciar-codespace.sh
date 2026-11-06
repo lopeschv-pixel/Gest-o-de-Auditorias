@@ -11,6 +11,7 @@ SQL_NOME="${SQL_NOME:-nuclaud-sql-dev}"
 SQL_PORTA="${SQL_PORTA:-1433}"
 LOG="${LOG:-/tmp/nuclaud.log}"
 
+if [ "${REINICIAR:-0}" = "1" ]; then pkill -f "NuClaud.Web" || true; sleep 2; fi
 if pgrep -f "NuClaud.Web" >/dev/null && [ "$PORTA" = "5251" ]; then echo "NUCLAUD já está em execução."; exit 0; fi
 
 if (echo > "/dev/tcp/127.0.0.1/$SQL_PORTA") 2>/dev/null; then
@@ -41,5 +42,10 @@ export Inicializacao__AdminNomeRede=admin
 export Inicializacao__AdminSenhaInicial="${NUCLAUD_ADMIN_SENHA_INICIAL}"
 export Demonstracao__SenhaUsuarios="${NUCLAUD_DEMO_SENHA:-}"
 export DataProtection__CaminhoChaves="${HOME}/.nuclaud-chaves"
-setsid nohup dotnet run --project src/NuClaud.Web --no-launch-profile > "$LOG" 2>&1 < /dev/null &
+PUB="${PUB:-/tmp/nuclaud-publicado}"
+echo "Preparando o sistema (1 a 3 minutos)..."
+rm -rf "$PUB"
+dotnet publish src/NuClaud.Web -c Release -o "$PUB" > "$LOG" 2>&1 || { echo "ERRO na compilação. Veja $LOG"; exit 1; }
+# Executa a versão publicada (inclui estilos, fontes e scripts da interface), como no servidor.
+(cd "$PUB" && setsid nohup dotnet NuClaud.Web.dll >> "$LOG" 2>&1 < /dev/null &)
 echo "NUCLAUD iniciando na porta $PORTA (log em $LOG). Usuário: admin. Senha inicial em $ENV_ARQ"
