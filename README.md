@@ -80,7 +80,7 @@ Acesse `http://localhost:5251` com o usuário `admin` e a senha exibida pelo scr
 
 ### Testar no navegador sem instalar nada (GitHub Codespaces)
 
-Com o repositório no GitHub: **Code › Codespaces › Create codespace**. O contêiner sobe o SQL Server, gera senhas
+Com o repositório no GitHub: **Code › Codespaces › Create codespace**. O Codespace liga o SQL Server em contêiner (Docker), gera senhas
 aleatórias em `.devcontainer/.env` (não versionado) e inicia o NUCLAUD na porta 5251, que o Codespaces abre em uma URL
 privada do navegador. Usuário `admin`; senha inicial em `.devcontainer/.env` (`NUCLAUD_ADMIN_SENHA_INICIAL`).
 

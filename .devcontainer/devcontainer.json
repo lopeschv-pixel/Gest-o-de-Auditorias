@@ -1,10 +1,11 @@
 {
   "name": "NUCLAUD (testes no navegador)",
-  "dockerComposeFile": ["docker-compose.devcontainer.yml"],
-  "service": "dev",
-  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
-  "initializeCommand": "bash scripts/gerar-env.sh .devcontainer/.env",
-  "postCreateCommand": "dotnet restore && dotnet tool restore",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:10.0",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "hostRequirements": { "memory": "8gb" },
+  "postCreateCommand": "bash scripts/gerar-env.sh .devcontainer/.env && dotnet restore && dotnet tool restore",
   "postStartCommand": "bash scripts/iniciar-codespace.sh",
   "forwardPorts": [5251],
   "portsAttributes": { "5251": { "label": "NUCLAUD", "onAutoForward": "openBrowser" } },

@@ -19,14 +19,22 @@ public static class Inicializacao
         var fabrica = sp.GetRequiredService<IDbContextFactory<NuClaudDbContext>>();
         var relogio = sp.GetRequiredService<IRelogio>();
 
-        // Aguarda o banco ficar disponível (ex.: servidor e SQL Server reiniciados ao mesmo tempo).
+        // Aguarda o SQL Server responder (ex.: servidor e banco reiniciados ao mesmo tempo).
+        // Testa a conexão com o servidor (banco master), pois o banco do NUCLAUD pode ainda não existir.
+        var csServidor = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(cfg.GetConnectionString("NuClaud")) { InitialCatalog = "master", ConnectTimeout = 5 }.ConnectionString;
         for (int tentativa = 1; ; tentativa++)
         {
-            await using var teste = await fabrica.CreateDbContextAsync();
-            try { if (await teste.Database.CanConnectAsync()) break; }
-            catch (Exception ex) when (tentativa < 24) { log.LogWarning("Banco indisponível ({Msg}). Nova tentativa em 5 s.", ex.GetType().Name); }
-            if (tentativa >= 24) throw new InvalidOperationException("Não foi possível conectar ao banco de dados após 2 minutos. Verifique ConnectionStrings:NuClaud e o SQL Server.");
-            await Task.Delay(5000);
+            try
+            {
+                await using var conexao = new Microsoft.Data.SqlClient.SqlConnection(csServidor);
+                await conexao.OpenAsync();
+                break;
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (tentativa < 24)
+            {
+                log.LogWarning("SQL Server indisponível (erro {Numero}). Nova tentativa em 5 s.", ex.Number);
+                await Task.Delay(5000);
+            }
         }
 
         await using (var db = await fabrica.CreateDbContextAsync())
