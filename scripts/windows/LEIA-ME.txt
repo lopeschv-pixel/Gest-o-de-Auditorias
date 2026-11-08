@@ -1,0 +1,49 @@
+﻿NUCLAUD — instalação local (Windows 10 ou 11)
+==============================================
+
+Esta pasta roda o NUCLAUD no seu próprio computador, para conhecer e testar o sistema.
+Os dados ficam só neste computador. Ele começa com dados FICTÍCIOS de exemplo.
+Esta não é a instalação oficial do servidor da empresa.
+
+
+PASSO 1 — Instalar o banco de dados gratuito (uma vez só)
+---------------------------------------------------------
+O NUCLAUD usa o "SQL Server Express LocalDB", versão gratuita e leve do SQL Server da Microsoft.
+
+ 1. No navegador, abra: https://www.microsoft.com/pt-br/sql-server/sql-server-downloads
+ 2. Na opção "Express", clique em "Baixar agora".
+ 3. Abra o arquivo baixado (SQL2022-SSEI-Expr.exe ou parecido).
+ 4. Escolha "Baixar Mídia".
+ 5. Marque "LocalDB" e clique em "Baixar".
+ 6. Abra o arquivo "SqlLocalDB.msi" que foi baixado e conclua a instalação (Avançar / Instalar).
+    O Windows pode pedir a senha de administrador do computador.
+
+Se não tiver permissão para instalar, peça à TI para instalar o "SQL Server Express LocalDB".
+
+
+PASSO 2 — Descompactar
+----------------------
+Clique com o botão direito no arquivo .zip › "Extrair tudo…".
+Escolha uma pasta sua, por exemplo "Documentos\NUCLAUD". Não rode de dentro do .zip.
+
+
+PASSO 3 — Iniciar
+-----------------
+Dê dois cliques em "Iniciar NUCLAUD.bat".
+
+ - Abre uma janela preta: é o sistema funcionando. Deixe-a aberta enquanto usar.
+ - Na primeira vez, aguarde até 1 minuto (o banco é criado e os dados de exemplo são carregados).
+ - O navegador abre em http://localhost:5251. Se não abrir, digite esse endereço no navegador.
+ - A janela mostra o usuário (admin) e a senha do primeiro acesso. O sistema pede uma senha nova.
+ - Para desligar, feche a janela preta. Para usar de novo, dê dois cliques no arquivo outra vez.
+
+
+Problemas comuns
+----------------
+ - "O Windows protegeu o computador" (tela azul): clique em "Mais informações" › "Executar assim mesmo".
+ - O antivírus bloqueou: peça à TI para liberar a pasta do NUCLAUD.
+ - "LocalDB não foi encontrado": faça o PASSO 1.
+ - O Firewall perguntou sobre acesso à rede: pode clicar em "Cancelar". O sistema só funciona neste computador.
+ - A senha mostrada na janela não funciona mais: ela vale só para o primeiro acesso. Use a senha que você criou.
+   As senhas iniciais ficam em %LOCALAPPDATA%\NUCLAUD\senhas-iniciais.txt.
+ - Aparece "Endereço já em uso" (porta 5251): já existe outra janela do NUCLAUD aberta. Feche-a e tente de novo.

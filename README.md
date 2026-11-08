@@ -66,6 +66,16 @@ auditores, auditorias, um relatório concluído) somente se o banco estiver vazi
 de exemplo `ana.ribeiro`, `carla.mendes` e `bruno.carvalho` (perfil Usuário, vinculados a auditores).
 **Nunca habilite a demonstração em produção.**
 
+### No próprio computador Windows (sem Docker)
+
+Pacote com o .NET embutido; só é preciso instalar o SQL Server Express LocalDB (gratuito). Gere com:
+
+```bash
+bash scripts/gerar-pacote-windows.sh
+```
+
+Descompacte `NUCLAUD-Windows.zip` no Windows e siga o `LEIA-ME.txt` (dois cliques em `Iniciar NUCLAUD.bat`).
+
 ### Com Docker (opcional)
 
 ```bash
