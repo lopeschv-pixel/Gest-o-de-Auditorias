@@ -30,7 +30,7 @@
    Para aplicar migrações pela aplicação também `db_ddladmin` (alternativa: o DBA aplica o script).
    A geração de códigos usa `sp_getapplock` (disponível a qualquer usuário do banco).
 2. Aplicar as migrações (escolha uma opção):
-   - **Script (recomendado em produção):** executar `deploy/sql/nuclaud-migracoes-idempotente.sql` (pode ser executado várias vezes).
+   - **Script (recomendado em produção):** executar `deploy/sql/nuclaud-migracoes-idempotente.sql` (pode ser executado várias vezes). No SSMS, basta abrir e executar; com `sqlcmd`, use a opção `-I` (QUOTED_IDENTIFIER ligado), por exemplo `sqlcmd -S servidor -d NuClaud -I -i nuclaud-migracoes-idempotente.sql`.
      Para regenerar após novas migrações:
      ```bash
      dotnet ef migrations script --idempotent -p src/NuClaud.Core -s src/NuClaud.Core -o deploy/sql/nuclaud-migracoes-idempotente.sql

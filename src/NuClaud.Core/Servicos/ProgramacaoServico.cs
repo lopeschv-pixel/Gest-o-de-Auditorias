@@ -15,7 +15,8 @@ public sealed class ProgramacaoEdicao
     public HashSet<int> AreaIds { get; set; } = new();
     public HashSet<int> MacroprocessoIds { get; set; } = new();
     public HashSet<int> ProcessoIds { get; set; } = new();
-    public HashSet<int> RequisitoIds { get; set; } = new();
+    /// <summary>Requisitos a auditar: em um processo (ProcessoId) ou gerais (ProcessoId nulo).</summary>
+    public HashSet<ItemRequisito> Itens { get; set; } = new();
     public int? LiderId { get; set; }
     public HashSet<int> AuditorIds { get; set; } = new();
     public HashSet<int> ObservadorIds { get; set; } = new();
@@ -24,6 +25,9 @@ public sealed class ProgramacaoEdicao
     public string? FornecedorEndereco { get; set; }
     public string? EscopoFornecimento { get; set; }
 }
+
+/// <summary>Requisito a auditar em um processo específico (ProcessoId) ou como requisito geral (nulo).</summary>
+public sealed record ItemRequisito(int? ProcessoId, int RequisitoId);
 
 public sealed record RequisitoOpcao(int Id, int NormaId, string Codigo, string Titulo, bool Ativo, string Chave)
 {
@@ -49,9 +53,8 @@ public sealed class SituacaoEdicaoProgramacao
     public SituacaoRelatorio? SituacaoRelatorio { get; init; }
     /// <summary>Mensagem quando a estrutura (normas, requisitos, equipe, áreas...) não pode ser alterada.</summary>
     public string? BloqueioEstrutura { get; init; }
-    /// <summary>AuditoriaRequisito.RequisitoId → origem registrada.</summary>
-    public Dictionary<int, string?> OrigemObrigatorios { get; init; } = new();
-    public HashSet<int> RequisitosEmConstatacoes { get; init; } = new();
+    /// <summary>Itens já classificados em constatações do relatório (não podem ser retirados).</summary>
+    public HashSet<ItemRequisito> ItensEmConstatacoes { get; init; } = new();
 }
 
 public sealed record AuditoriaResumo(int Id, string Codigo, TipoAuditoria Tipo, int Ano, int MesPrevisto, string Identificacao,
@@ -131,8 +134,8 @@ public class ProgramacaoServico
         if (!ator.EhAdministrador) throw new AcessoNegadoException();
         await using var db = await _fabrica.CreateDbContextAsync();
         var a = await CarregarCompletaAsync(db, id, rastrear: false) ?? throw new NaoEncontradoException("Auditoria não encontrada.");
-        var emConstatacoes = a.Relatorio == null ? new HashSet<int>() : a.Relatorio.Constatacoes.SelectMany(c => c.Requisitos)
-            .Join(a.Requisitos, cr => cr.AuditoriaRequisitoId, ar => ar.Id, (cr, ar) => ar.RequisitoId).ToHashSet();
+        var emConstatacoes = a.Relatorio == null ? new HashSet<ItemRequisito>() : a.Relatorio.Constatacoes.SelectMany(c => c.Requisitos)
+            .Join(a.Requisitos, cr => cr.AuditoriaRequisitoId, ar => ar.Id, (cr, ar) => new ItemRequisito(ar.ProcessoId, ar.RequisitoId)).ToHashSet();
         return new SituacaoEdicaoProgramacao
         {
             Codigo = a.Codigo,
@@ -140,8 +143,7 @@ public class ProgramacaoServico
             TemRelatorio = a.Relatorio != null,
             SituacaoRelatorio = a.Relatorio?.Situacao,
             BloqueioEstrutura = MotivoBloqueioEstrutura(a),
-            OrigemObrigatorios = a.Requisitos.Where(r => r.Obrigatorio).ToDictionary(r => r.RequisitoId, r => r.Origem),
-            RequisitosEmConstatacoes = emConstatacoes,
+            ItensEmConstatacoes = emConstatacoes,
             Dados = new ProgramacaoEdicao
             {
                 Id = a.Id,
@@ -153,7 +155,7 @@ public class ProgramacaoServico
                 AreaIds = a.Areas.Select(n => n.AreaId).ToHashSet(),
                 MacroprocessoIds = a.Macroprocessos.Select(n => n.MacroprocessoId).ToHashSet(),
                 ProcessoIds = a.Processos.Select(n => n.ProcessoId).ToHashSet(),
-                RequisitoIds = a.Requisitos.Select(n => n.RequisitoId).ToHashSet(),
+                Itens = a.Requisitos.Select(n => new ItemRequisito(n.ProcessoId, n.RequisitoId)).ToHashSet(),
                 LiderId = a.Participantes.FirstOrDefault(p => p.Funcao == FuncaoAuditoria.Lider)?.AuditorId,
                 AuditorIds = a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Auditor).Select(p => p.AuditorId).ToHashSet(),
                 ObservadorIds = a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Observador).Select(p => p.AuditorId).ToHashSet(),
@@ -189,7 +191,7 @@ public class ProgramacaoServico
 
     internal static void Ordenar(Auditoria a)
     {
-        a.Requisitos = a.Requisitos.OrderBy(r => r.NomeNorma).ThenBy(r => r.ChaveOrdenacao, StringComparer.Ordinal).ToList();
+        a.Requisitos = a.Requisitos.OrderBy(r => r.NomeNorma).ThenBy(r => r.ChaveOrdenacao, StringComparer.Ordinal).ThenBy(r => r.NomeProcesso ?? "").ToList();
         a.Participantes = a.Participantes.OrderBy(p => p.Funcao).ThenBy(p => p.NomeAuditor).ToList();
         a.Areas = a.Areas.OrderBy(x => x.NomeArea).ToList();
         a.Normas = a.Normas.OrderBy(x => x.NomeNorma).ToList();
@@ -246,6 +248,7 @@ public class ProgramacaoServico
             dto.AreaIds.Clear();
             dto.MacroprocessoIds.Clear();
             dto.ProcessoIds.Clear();
+            dto.Itens = dto.Itens.Select(i => i with { ProcessoId = null }).ToHashSet();
             dto.FornecedorNome = Validacoes.Limpar(dto.FornecedorNome);
             dto.FornecedorCnpj = Validacoes.FormatarCnpj(Validacoes.Limpar(dto.FornecedorCnpj));
             dto.FornecedorEndereco = Validacoes.Limpar(dto.FornecedorEndereco);
@@ -312,7 +315,8 @@ public class ProgramacaoServico
         var macros = await db.Macroprocessos.AsNoTracking().Where(n => dto.MacroprocessoIds.Contains(n.Id)).ToDictionaryAsync(n => n.Id);
         var participantesIds = dto.AuditorIds.Concat(dto.ObservadorIds).Append(dto.LiderId!.Value).ToHashSet();
         var auditores = await db.Auditores.AsNoTracking().Include(x => x.Habilitacoes).Where(x => participantesIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
-        var requisitos = await db.Requisitos.AsNoTracking().Where(r => dto.RequisitoIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id);
+        var reqIds = dto.Itens.Select(i => i.RequisitoId).ToHashSet();
+        var requisitos = await db.Requisitos.AsNoTracking().Where(r => reqIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id);
 
         bool JaUsado<T>(IEnumerable<T>? atuais, Func<T, int> chave, int idItem) => atuais?.Any(x => chave(x) == idItem) == true;
 
@@ -328,35 +332,30 @@ public class ProgramacaoServico
         if (macros.Count != dto.MacroprocessoIds.Count) erros.Add("Macroprocesso inválido.");
         foreach (var n in macros.Values.Where(n => !n.Ativo && !JaUsado(a?.Macroprocessos, x => x.MacroprocessoId, n.Id)))
             erros.Add($"O macroprocesso {n.Nome} está inativo.");
-        if (requisitos.Count != dto.RequisitoIds.Count) erros.Add("Requisito inválido.");
+        if (requisitos.Count != reqIds.Count) erros.Add("Requisito inválido.");
         if (auditores.Count != participantesIds.Count) erros.Add("Auditor inválido.");
         if (erros.Count > 0) throw new RegraNegocioException(erros);
 
-        // ---- Requisitos obrigatórios
-        // Se normas e processos não mudaram, preserva os obrigatórios registrados na programação (retrato histórico).
-        Dictionary<int, List<string>> obrigatorios;
+        // ---- Requisitos por processo
+        // Cada processo selecionado precisa ter os requisitos que serão auditados nele; os itens gerais (sem processo) são opcionais.
         bool estruturaMesma = a != null &&
                               a.Normas.Select(x => x.NormaId).ToHashSet().SetEquals(dto.NormaIds) &&
                               a.Processos.Select(x => x.ProcessoId).ToHashSet().SetEquals(dto.ProcessoIds);
-        if (estruturaMesma)
-            obrigatorios = a!.Requisitos.Where(r => r.Obrigatorio)
-                .ToDictionary(r => r.RequisitoId, r => (r.Origem ?? "").Split("; ", StringSplitOptions.RemoveEmptyEntries).ToList());
-        else
-            obrigatorios = RegrasRequisitos.Obrigatorios(processos.Values.Select(ParaInfo), dto.NormaIds);
-
-        foreach (var (reqId, origem) in obrigatorios)
-            if (!dto.RequisitoIds.Contains(reqId))
-            {
-                var r = requisitos.GetValueOrDefault(reqId) ?? await db.Requisitos.AsNoTracking().FirstAsync(x => x.Id == reqId);
-                erros.Add($"O requisito {OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)} é obrigatório para o processo {string.Join(", ", origem)} e não pode ser retirado.");
-            }
-        foreach (var r in requisitos.Values)
+        var itensAtuais = a?.Requisitos.Select(r => new ItemRequisito(r.ProcessoId, r.RequisitoId)).ToHashSet() ?? new HashSet<ItemRequisito>();
+        foreach (var item in dto.Itens)
         {
-            if (!dto.NormaIds.Contains(r.NormaId))
-                erros.Add($"O requisito {r.Codigo} não pertence às normas selecionadas.");
-            else if (!r.Ativo && !JaUsado(a?.Requisitos, x => x.RequisitoId, r.Id) && !obrigatorios.ContainsKey(r.Id))
-                erros.Add($"O requisito {r.Codigo} está inativo.");
+            if (!requisitos.TryGetValue(item.RequisitoId, out var r)) continue;
+            if (!dto.NormaIds.Contains(r.NormaId)) { erros.Add($"O requisito {r.Codigo} não pertence às normas selecionadas."); continue; }
+            if (!r.Ativo && !itensAtuais.Contains(item)) erros.Add($"O requisito {r.Codigo} está inativo.");
+            if (item.ProcessoId is int pid)
+            {
+                if (!processos.TryGetValue(pid, out var proc)) erros.Add($"O requisito {r.Codigo} está associado a um processo que não foi selecionado.");
+                else if (proc.Normas.All(n => n.NormaId != r.NormaId))
+                    erros.Add($"O processo {proc.Nome} não está cadastrado como auditável na norma do requisito {r.Codigo}.");
+            }
         }
+        foreach (var proc in processos.Values.Where(p => dto.Itens.All(i => i.ProcessoId != p.Id)))
+            erros.Add($"Selecione os requisitos que serão auditados no processo {proc.Nome}.");
 
         // ---- Equipe e habilitações
         var listaNormas = normas.Values.Select(n => new NormaInfo(n.Id, n.Nome)).ToList();
@@ -381,7 +380,7 @@ public class ProgramacaoServico
             var mudou = !estruturaMesma
                         || !a.Areas.Select(x => x.AreaId).ToHashSet().SetEquals(dto.AreaIds)
                         || !a.Macroprocessos.Select(x => x.MacroprocessoId).ToHashSet().SetEquals(dto.MacroprocessoIds)
-                        || !a.Requisitos.Select(x => x.RequisitoId).ToHashSet().SetEquals(dto.RequisitoIds)
+                        || !itensAtuais.SetEquals(dto.Itens)
                         || a.Lider?.AuditorId != dto.LiderId
                         || !a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Auditor).Select(p => p.AuditorId).ToHashSet().SetEquals(dto.AuditorIds)
                         || !a.Participantes.Where(p => p.Funcao == FuncaoAuditoria.Observador).Select(p => p.AuditorId).ToHashSet().SetEquals(dto.ObservadorIds)
@@ -390,8 +389,8 @@ public class ProgramacaoServico
             if (bloqueio != null && mudou) erros.Insert(0, bloqueio);
             // Em revisão: requisitos usados em constatações não podem sair.
             var usados = a.Relatorio.Constatacoes.SelectMany(c => c.Requisitos).Select(cr => cr.AuditoriaRequisitoId).ToHashSet();
-            foreach (var ar in a.Requisitos.Where(r => usados.Contains(r.Id) && !dto.RequisitoIds.Contains(r.RequisitoId)))
-                erros.Add($"O requisito {ar.Codigo} está classificado em constatações do relatório e não pode ser retirado.");
+            foreach (var ar in a.Requisitos.Where(r => usados.Contains(r.Id) && !dto.Itens.Contains(new ItemRequisito(r.ProcessoId, r.RequisitoId))))
+                erros.Add($"O requisito {ar.Codigo} ({ar.ProcessoExibicao}) está classificado em constatações do relatório e não pode ser retirado.");
         }
         if (erros.Count > 0) throw new RegraNegocioException(erros.Distinct());
 
@@ -440,15 +439,16 @@ public class ProgramacaoServico
             var p = processos[x.ProcessoId];
             x.NomeProcesso = p.Nome; x.NomeMacroprocesso = p.Macroprocesso!.Nome;
         });
-        Sincronizar(aud.Requisitos, dto.RequisitoIds, x => x.RequisitoId, idn => new AuditoriaRequisito { RequisitoId = idn }, refrescarRetratos, x =>
+        // Itens (processo, requisito): mantém as linhas existentes (constatações apontam para elas), inclui as novas e retira as desmarcadas.
+        aud.Requisitos.RemoveAll(x => !dto.Itens.Contains(new ItemRequisito(x.ProcessoId, x.RequisitoId)));
+        foreach (var item in dto.Itens)
         {
-            var r = requisitos[x.RequisitoId];
-            x.NormaId = r.NormaId; x.NomeNorma = normas[r.NormaId].Nome; x.Codigo = r.Codigo; x.Titulo = r.Titulo; x.ChaveOrdenacao = r.ChaveOrdenacao;
-        });
-        foreach (var r in aud.Requisitos)
-        {
-            r.Obrigatorio = obrigatorios.TryGetValue(r.RequisitoId, out var origem);
-            r.Origem = r.Obrigatorio ? string.Join("; ", origem!) : null;
+            var linha = aud.Requisitos.FirstOrDefault(x => x.RequisitoId == item.RequisitoId && x.ProcessoId == item.ProcessoId);
+            if (linha == null) aud.Requisitos.Add(linha = new AuditoriaRequisito { RequisitoId = item.RequisitoId, ProcessoId = item.ProcessoId });
+            else if (!refrescarRetratos) continue;
+            var r = requisitos[item.RequisitoId];
+            linha.NormaId = r.NormaId; linha.NomeNorma = normas[r.NormaId].Nome; linha.Codigo = r.Codigo; linha.Titulo = r.Titulo; linha.ChaveOrdenacao = r.ChaveOrdenacao;
+            linha.NomeProcesso = item.ProcessoId is int pid ? processos[pid].Nome : null;
         }
 
         var desejados = new List<(int AuditorId, FuncaoAuditoria Funcao)> { (dto.LiderId.Value, FuncaoAuditoria.Lider) };
@@ -493,7 +493,7 @@ public class ProgramacaoServico
         Normas = a.Normas.Select(n => n.NomeNorma).OrderBy(x => x).ToList(),
         Areas = a.Areas.Select(n => n.NomeArea).OrderBy(x => x).ToList(),
         Processos = a.Processos.Select(n => n.NomeProcesso).OrderBy(x => x).ToList(),
-        Requisitos = a.Requisitos.OrderBy(r => r.NomeNorma).ThenBy(r => r.ChaveOrdenacao).Select(r => $"{r.NomeNorma} {r.Codigo}{(r.Obrigatorio ? " (obrigatório)" : "")}").ToList(),
+        Requisitos = a.Requisitos.OrderBy(r => r.NomeNorma).ThenBy(r => r.ChaveOrdenacao).Select(r => $"{r.NomeNorma} {r.Codigo} · {r.ProcessoExibicao}").ToList(),
         Equipe = a.Participantes.OrderBy(p => p.Funcao).Select(p => $"{p.Funcao.Texto()}: {p.NomeAuditor}").ToList(),
         a.FornecedorNome, a.FornecedorCnpj, a.FornecedorEndereco, a.EscopoFornecimento
     };

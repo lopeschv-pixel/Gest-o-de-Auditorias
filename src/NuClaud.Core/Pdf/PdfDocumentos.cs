@@ -129,7 +129,7 @@ public static class PdfDocumentos
             {
                 if (pr.Elements.Count > 0) pr.AddLineBreak();
                 pr.AddFormattedText(g.Key + ": ", TextFormat.Bold);
-                pr.AddText(string.Join(", ", g.OrderBy(x => x.ChaveOrdenacao, StringComparer.Ordinal).Select(x => x.Codigo)));
+                pr.AddText(string.Join(", ", g.OrderBy(x => x.ChaveOrdenacao, StringComparer.Ordinal).Select(x => x.Codigo).Distinct()));
             }
             r.Cells[7].AddParagraph(a.Situacao.Texto());
         }
@@ -174,17 +174,22 @@ public static class PdfDocumentos
     {
         PdfBase.Titulo1(s, classificacao == null ? "Requisitos" : "Requisitos auditados");
         if (a.Requisitos.Count == 0) { PdfBase.Texto(s, "Nenhum requisito definido."); return; }
-        var colunas = classificacao == null
-            ? new[] { ("Norma", 3.6), ("Requisito", 2.0), ("Título", LarguraRetrato - 5.6) }
-            : new[] { ("Norma", 3.4), ("Requisito", 1.9), ("Título", LarguraRetrato - 5.3 - 3.6), ("Classificação", 3.6) };
-        var t = PdfBase.TabelaComCabecalho(s, colunas);
-        foreach (var r in a.Requisitos.OrderBy(x => x.NomeNorma).ThenBy(x => x.ChaveOrdenacao, StringComparer.Ordinal))
+        var comProcesso = a.Tipo == TipoAuditoria.Interna;
+        var colunas = new List<(string, double)> { ("Norma", 2.9), ("Requisito", 1.7) };
+        var restante = LarguraRetrato - 4.6 - (comProcesso ? 3.3 : 0) - (classificacao != null ? 3.2 : 0);
+        colunas.Add(("Título", restante));
+        if (comProcesso) colunas.Add(("Processo", 3.3));
+        if (classificacao != null) colunas.Add(("Classificação", 3.2));
+        var t = PdfBase.TabelaComCabecalho(s, colunas.ToArray());
+        foreach (var r in a.Requisitos.OrderBy(x => x.NomeNorma).ThenBy(x => x.ChaveOrdenacao, StringComparer.Ordinal).ThenBy(x => x.NomeProcesso ?? ""))
         {
             var row = t.AddRow();
-            row.Cells[0].AddParagraph(r.NomeNorma);
-            row.Cells[1].AddParagraph(r.Codigo);
-            row.Cells[2].AddParagraph(r.Titulo);
-            if (classificacao != null) row.Cells[3].AddParagraph(classificacao.TryGetValue(r.Id, out var c) ? c : "Não classificado");
+            int c = 0;
+            row.Cells[c++].AddParagraph(r.NomeNorma);
+            row.Cells[c++].AddParagraph(r.Codigo);
+            row.Cells[c++].AddParagraph(r.Titulo);
+            if (comProcesso) row.Cells[c++].AddParagraph(r.ProcessoExibicao);
+            if (classificacao != null) row.Cells[c].AddParagraph(classificacao.TryGetValue(r.Id, out var cl) ? cl : "Não classificado");
         }
         s.AddParagraph().Format.SpaceAfter = 2;
     }
@@ -243,7 +248,7 @@ public static class PdfDocumentos
             if (RegrasRelatorio.UsaRequisitos(c.Classificacao))
                 Campo("Requisitos", string.Join("\n", c.Requisitos.Select(r => reqs.TryGetValue(r.AuditoriaRequisitoId, out var ar) ? ar : null)
                     .Where(r => r != null).OrderBy(r => r!.NomeNorma).ThenBy(r => r!.ChaveOrdenacao, StringComparer.Ordinal)
-                    .Select(r => $"{r!.NomeNorma} — {OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)}")));
+                    .Select(r => $"{r!.NomeNorma} — {OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)}{(a.Tipo == TipoAuditoria.Interna ? " · " + r.ProcessoExibicao : "")}")));
             switch (c.Classificacao)
             {
                 case ClassificacaoConstatacao.Conformidade:

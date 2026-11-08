@@ -45,7 +45,7 @@ public class IntegracaoSqlServerTestes
             var tarefas = Enumerable.Range(0, 20).Select(_ => Task.Run(() => new ProgramacaoServico(fabrica, relogio).SalvarAsync(admin, new ProgramacaoEdicao
             {
                 Tipo = TipoAuditoria.Interna, Ano = 2027, MesPrevisto = 3, NormaIds = { iso.Id }, AreaIds = { area },
-                RequisitoIds = { iso.Requisitos.First().Id }, LiderId = lider
+                Itens = { new(null, iso.Requisitos.First().Id) }, LiderId = lider
             })));
             var ids = await Task.WhenAll(tarefas);
             await using var db2 = fabrica.CreateDbContext();

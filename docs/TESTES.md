@@ -1,13 +1,15 @@
 # Testes
 
-## Automatizados (`dotnet test`) — 45 testes, todos aprovados
+## Automatizados (`dotnet test`) — 49 testes, todos aprovados
 
 | Grupo | O que verifica |
 |---|---|
 | `RegrasTestes` | Ordenação numérica (4.1, 4.2, 4.2.1 … 10.1); níveis de código (aceita 4.1 e 4.4.1, rejeita 4 e 4.4.1.1); formato e sequência dos códigos; cobertura do relatório (observação/OM não contam); pontuação 2/1/0 sem duplicar; união de obrigatórios; prioridade de cores; períodos (horário, sobreposição, duplicidade); CNPJ; habilitação do líder em todas as normas |
-| `ProgramacaoTestes` | Sequências por tipo/ano; exclusão sem renumerar; reinício em 001; só administrador programa/altera/exclui; obrigatórios carregados e não removíveis; alteração do processo não reescreve auditoria; fornecedor sem área/processo; habilitações e duplicidades; edição de auditor preserva participação; área usada não é excluída e renomear preserva histórico; bloqueio após início do relatório; concorrência otimista |
+| `ProgramacaoTestes` | Sequências por tipo/ano; exclusão sem renumerar; reinício em 001; só administrador programa/altera/exclui; requisitos escolhidos por processo (processo sem requisito bloqueado, mesmo requisito em dois processos, processo não auditável na norma recusado); alteração do processo não reescreve auditoria; fornecedor sem área/processo; habilitações e duplicidades; edição de auditor preserva participação; área usada não é excluída e renomear preserva histórico; bloqueio após início do relatório; concorrência otimista |
 | `PermissoesTestes` | Acesso negado por troca de identificador; auditor não líder só visualiza; líder altera apenas datas/horários; objetivo/escopo só fornecedor; proteção do último administrador; operações administrativas bloqueadas para usuário; senha com hash e bloqueio por tentativas |
 | `RelatorioTestes` | Bloqueio por requisito pendente com número/título e dados preservados; conclusão; bloqueio pós-conclusão; reabertura com motivo e histórico; nova conclusão; campos por classificação e descarte de ocultos; editar/excluir com renumeração; qualificação obrigatória de fornecedor; interna sem RQF; relatório exige plano |
+| `ImportacaoTestes` | Leitura de .xlsx com títulos, células mescladas e macroprocesso em branco; sem títulos; CSV; recusa de .xls e arquivos inválidos; prévia; importação para a norma sem duplicar; bloqueio para usuário comum |
+| `CoberturaTestes` | Processos e requisitos realizados, programados e não planejados por ano e por intervalo; requisito contado em processos diferentes; acesso só de administrador |
 | `ConsultasTestes` | Ranqueamento por ano; filtro de várias normas sem duplicar; busca por fornecedor e auditor sem acento |
 | `PdfTestes` | PDFs longos (todos os requisitos da ISO 9001, 12 períodos, 66 constatações, texto com 60 linhas e acentos) com várias páginas; programa vazio; validação e proporção do logotipo (PNG/WebP aceitos, SVG e PNG corrompido rejeitados) |
 | `IntegracaoSqlServerTestes` | Em SQL Server real: aplica migrações, carga idempotente e **20 criações simultâneas** gerando AUDI‑I‑001…020 sem duplicidade (requer `NUCLAUD_TESTE_SQLSERVER`) |

@@ -33,14 +33,27 @@
 - Candidatos incompatíveis aparecem desabilitados com o motivo; o servidor rejeita qualquer designação sem habilitação.
 - Uma pessoa ocupa uma única função por auditoria (o líder é retirado automaticamente de Auditores/Observadores).
 
-## Requisitos da programação
-- Ao selecionar processos, os requisitos obrigatórios (cadastro do processo) das **normas selecionadas** são incluídos,
-  unidos sem duplicação e identificados com a origem (“Obrigatório · Compras”). Requisitos inativos não são incluídos.
-- Obrigatórios não podem ser retirados (tela e servidor). Requisitos adicionais podem ser marcados livremente.
-- Trocar normas/processos atualiza a lista e mostra aviso do que foi incluído/retirado.
-- Se normas e processos não mudarem, a auditoria mantém os obrigatórios registrados na programação, mesmo que o cadastro do
-  processo seja alterado depois (retrato histórico).
-- Fornecedores: sem área, macroprocesso ou processo (valores ocultos são descartados no servidor).
+## Requisitos da programação (por processo)
+- Em auditorias internas, para **cada processo escolhido** o usuário marca os requisitos que serão auditados **naquele processo**.
+  Só aparecem os requisitos das normas selecionadas em que o processo é auditável.
+- Os requisitos relacionados ao processo no cadastro são **apenas sugestão** (botão “Marcar relacionados”); nada entra automaticamente.
+- Cada processo escolhido precisa ter ao menos um requisito; o servidor recusa requisito de processo não selecionado ou de norma em que o processo não é auditável.
+- O mesmo requisito pode ser auditado em processos diferentes da mesma auditoria. Também é possível incluir **requisitos gerais** (sem processo).
+- Em auditorias de fornecedores não há processo: todos os requisitos são gerais.
+- Trocar normas ou processos retira os requisitos que deixaram de se aplicar, com aviso na tela.
+- Auditorias programadas antes desta mudança tiveram seus requisitos ligados ao processo de origem (quando havia um único) pela migração `RequisitosPorProcesso`; os demais ficaram como gerais.
+
+## Importação de processos do Excel
+- Em “Macroprocessos e processos” › “Importar do Excel”: primeiro escolhe-se a **norma**, depois o arquivo (.xlsx ou .csv; .xls antigo deve ser salvo como .xlsx).
+- A primeira aba precisa das colunas **Macroprocesso** e **Processo** (títulos na primeira linha; sem títulos, A = macroprocesso e B = processo).
+  Macroprocesso em branco ou mesclado repete o valor de cima; linhas repetidas são ignoradas; comparação sem diferenciar maiúsculas e acentos.
+- Antes de gravar, uma prévia mostra o que é novo, o que já existe e passará a ser auditável na norma, e o que não muda. A importação é feita em uma transação e registrada no histórico.
+
+## Planejamento de processos
+- Para a norma e o período escolhidos (um ano ou um intervalo de anos), mostra cada processo auditável da norma e cada requisito ativo:
+  **Realizado** (em auditoria com relatório concluído), **Programado** (em auditoria programada) ou **Não planejado**.
+- Um requisito conta para a norma em qualquer processo em que for auditado, ou como requisito geral.
+- Disponível para administradores.
 
 ## Bloqueios por documentos
 - Após o **início do relatório**, normas, requisitos, equipe, áreas, processos e dados do fornecedor ficam bloqueados (só o mês muda).

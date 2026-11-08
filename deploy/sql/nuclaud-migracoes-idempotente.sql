@@ -749,3 +749,75 @@ END;
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261108034454_RequisitosPorProcesso'
+)
+BEGIN
+    DROP INDEX [IX_AuditoriaRequisitos_AuditoriaId_RequisitoId] ON [AuditoriaRequisitos];
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261108034454_RequisitosPorProcesso'
+)
+BEGIN
+    ALTER TABLE [AuditoriaRequisitos] ADD [NomeProcesso] nvarchar(150) NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261108034454_RequisitosPorProcesso'
+)
+BEGIN
+    ALTER TABLE [AuditoriaRequisitos] ADD [ProcessoId] int NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261108034454_RequisitosPorProcesso'
+)
+BEGIN
+    EXEC(N'UPDATE ar SET ar.ProcessoId = ap.ProcessoId, ar.NomeProcesso = ap.NomeProcesso
+    FROM AuditoriaRequisitos ar
+    JOIN AuditoriaProcessos ap ON ap.AuditoriaId = ar.AuditoriaId AND ap.NomeProcesso = ar.Origem
+    WHERE ar.Obrigatorio = 1 AND ar.ProcessoId IS NULL;');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261108034454_RequisitosPorProcesso'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_AuditoriaRequisitos_AuditoriaId_RequisitoId_ProcessoId] ON [AuditoriaRequisitos] ([AuditoriaId], [RequisitoId], [ProcessoId]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261108034454_RequisitosPorProcesso'
+)
+BEGIN
+    CREATE INDEX [IX_AuditoriaRequisitos_ProcessoId] ON [AuditoriaRequisitos] ([ProcessoId]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261108034454_RequisitosPorProcesso'
+)
+BEGIN
+    ALTER TABLE [AuditoriaRequisitos] ADD CONSTRAINT [FK_AuditoriaRequisitos_Processos_ProcessoId] FOREIGN KEY ([ProcessoId]) REFERENCES [Processos] ([Id]) ON DELETE NO ACTION;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261108034454_RequisitosPorProcesso'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20261108034454_RequisitosPorProcesso', N'10.0.14');
+END;
+
+COMMIT;
+GO
+

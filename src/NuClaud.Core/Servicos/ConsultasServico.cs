@@ -71,6 +71,24 @@ public sealed record PlanejamentoAuditor(int AuditorId, string Nome, bool Ativo,
     public int MaiorConcentracaoMensal => PorMes.Count == 0 ? 0 : PorMes.Values.Max();
 }
 
+public enum SituacaoCobertura { NaoPlanejado = 0, Programado = 1, Realizado = 2 }
+
+public sealed record ReferenciaAuditoria(int AuditoriaId, string Codigo, int Ano, int Mes, bool Realizada, string Processo);
+
+public sealed record CoberturaProcesso(int ProcessoId, string Macroprocesso, string Processo, IReadOnlyList<ReferenciaAuditoria> Auditorias,
+    int RequisitosAuditados, SituacaoCobertura Situacao);
+
+public sealed record CoberturaRequisito(int RequisitoId, string Codigo, string Titulo, string Chave, IReadOnlyList<ReferenciaAuditoria> Onde, SituacaoCobertura Situacao);
+
+public sealed record CoberturaNorma(string Norma, int AnoInicial, int AnoFinal, IReadOnlyList<CoberturaProcesso> Processos, IReadOnlyList<CoberturaRequisito> Requisitos)
+{
+    public static (int Realizados, int Programados, int NaoPlanejados) Contar<T>(IEnumerable<T> itens, Func<T, SituacaoCobertura> s)
+    {
+        var l = itens.Select(s).ToList();
+        return (l.Count(x => x == SituacaoCobertura.Realizado), l.Count(x => x == SituacaoCobertura.Programado), l.Count(x => x == SituacaoCobertura.NaoPlanejado));
+    }
+}
+
 public class ConsultasServico
 {
     private readonly IDbContextFactory<NuClaudDbContext> _fabrica;
@@ -149,6 +167,48 @@ public class ConsultasServico
                 designacoes.Where(d => d.Funcao != FuncaoAuditoria.Observador).GroupBy(d => d.Mes).ToDictionary(g => g.Key, g => g.Count())));
         }
         return resultado;
+    }
+
+    /// <summary>
+    /// Cobertura de uma norma no período: todos os processos auditáveis da norma foram auditados?
+    /// Todos os requisitos ativos da norma foram auditados (em qualquer processo, ou como requisito geral)?
+    /// Programado = está em auditoria programada no período; Realizado = auditoria com relatório concluído.
+    /// </summary>
+    public async Task<CoberturaNorma> CoberturaAsync(Ator ator, int normaId, int anoInicial, int anoFinal)
+    {
+        if (!ator.EhAdministrador) throw new AcessoNegadoException();
+        if (anoFinal < anoInicial) (anoInicial, anoFinal) = (anoFinal, anoInicial);
+        await using var db = await _fabrica.CreateDbContextAsync();
+        var norma = await db.Normas.AsNoTracking().Include(n => n.Requisitos).FirstOrDefaultAsync(n => n.Id == normaId)
+                    ?? throw new NaoEncontradoException("Norma não encontrada.");
+        var auditorias = await db.Auditorias.AsNoTracking()
+            .Include(a => a.Normas).Include(a => a.Processos).Include(a => a.Requisitos).Include(a => a.Relatorio)
+            .Where(a => a.Ano >= anoInicial && a.Ano <= anoFinal && a.Normas.Any(n => n.NormaId == normaId))
+            .AsSplitQuery().ToListAsync();
+        var processos = await db.Processos.AsNoTracking().Include(p => p.Macroprocesso)
+            .Where(p => p.Ativo && p.Normas.Any(n => n.NormaId == normaId)).ToListAsync();
+
+        static bool Realizada(Auditoria a) => a.Relatorio?.Situacao == SituacaoRelatorio.Concluido;
+        static SituacaoCobertura Situacao(IEnumerable<ReferenciaAuditoria> refs) =>
+            refs.Any(r => r.Realizada) ? SituacaoCobertura.Realizado : refs.Any() ? SituacaoCobertura.Programado : SituacaoCobertura.NaoPlanejado;
+
+        var cobProc = processos.Select(p =>
+        {
+            var auds = auditorias.Where(a => a.Processos.Any(x => x.ProcessoId == p.Id)).OrderBy(a => a.Ano).ThenBy(a => a.MesPrevisto).ToList();
+            var refs = auds.Select(a => new ReferenciaAuditoria(a.Id, a.Codigo, a.Ano, a.MesPrevisto, Realizada(a), p.Nome)).ToList();
+            var nReq = auds.SelectMany(a => a.Requisitos.Where(r => r.ProcessoId == p.Id && r.NormaId == normaId)).Select(r => r.RequisitoId).Distinct().Count();
+            return new CoberturaProcesso(p.Id, p.Macroprocesso?.Nome ?? "", p.Nome, refs, nReq, Situacao(refs));
+        }).OrderBy(x => x.Macroprocesso).ThenBy(x => x.Processo).ToList();
+
+        var cobReq = norma.Requisitos.Where(r => r.Ativo).OrderBy(r => r.ChaveOrdenacao, StringComparer.Ordinal).Select(r =>
+        {
+            var refs = auditorias.SelectMany(a => a.Requisitos.Where(x => x.RequisitoId == r.Id)
+                    .Select(x => new ReferenciaAuditoria(a.Id, a.Codigo, a.Ano, a.MesPrevisto, Realizada(a), x.ProcessoExibicao)))
+                .OrderBy(x => x.Ano).ThenBy(x => x.Mes).ToList();
+            return new CoberturaRequisito(r.Id, r.Codigo, r.Titulo, r.ChaveOrdenacao, refs, Situacao(refs));
+        }).ToList();
+
+        return new CoberturaNorma(norma.Nome, anoInicial, anoFinal, cobProc, cobReq);
     }
 
     /// <summary>Períodos de planos diferentes que se sobrepõem no mesmo dia para a mesma pessoa.</summary>

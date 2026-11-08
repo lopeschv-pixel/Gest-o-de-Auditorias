@@ -143,22 +143,13 @@ public sealed record ProcessoInfo(int Id, string Nome, int MacroprocessoId, IRea
 public static class RegrasRequisitos
 {
     /// <summary>
-    /// Une os requisitos obrigatórios dos processos selecionados, sem duplicação,
-    /// considerando apenas as normas selecionadas na auditoria e requisitos ativos.
-    /// Retorna requisitoId → nomes dos processos de origem.
+    /// Requisitos relacionados ao processo no cadastro (apenas sugestão ao programar), restritos às normas
+    /// selecionadas na auditoria, às normas em que o processo é auditável e a requisitos ativos.
     /// </summary>
-    public static Dictionary<int, List<string>> Obrigatorios(IEnumerable<ProcessoInfo> processos, ICollection<int> normasSelecionadas)
-    {
-        var r = new Dictionary<int, List<string>>();
-        foreach (var p in processos)
-            foreach (var req in p.RequisitosObrigatorios)
-            {
-                if (!req.Ativo || !normasSelecionadas.Contains(req.NormaId)) continue;
-                if (!r.TryGetValue(req.RequisitoId, out var origem)) r[req.RequisitoId] = origem = new();
-                if (!origem.Contains(p.Nome)) origem.Add(p.Nome);
-            }
-        return r;
-    }
+    public static IReadOnlyList<int> Sugeridos(ProcessoInfo processo, ICollection<int> normasSelecionadas) =>
+        processo.RequisitosObrigatorios
+            .Where(r => r.Ativo && normasSelecionadas.Contains(r.NormaId) && processo.NormaIds.Contains(r.NormaId))
+            .Select(r => r.RequisitoId).Distinct().ToList();
 }
 
 // ------------------------------------------------------------------

@@ -3,15 +3,16 @@
 @inherits PaginaBase
 @inject CadastroServico Cadastro
 @inject NormaServico NormasSrv
+@inject ImportacaoProcessosServico Importacao
 
 <PageTitle>Macroprocessos e processos — NUCLAUD</PageTitle>
-<PageHeader Titulo="Macroprocessos e processos" Subtitulo="Normas aplicáveis e requisitos obrigatórios de cada processo.">
+<PageHeader Titulo="Macroprocessos e processos" Subtitulo="Normas em que cada processo é auditável e requisitos relacionados (sugeridos ao programar).">
     <Migalhas><a href="/admin">Administração do sistema</a> › Macroprocessos e processos</Migalhas>
 </PageHeader>
 
 <div class="conteudo">
     @if (ErroCarga != null) { <div class="alerta alerta-erro">@ErroCarga</div> }
-    @if (_macroEdicao == null && _procEdicao == null) { <ListaErros Erros="Erros" /> }
+    @if (_macroEdicao == null && _procEdicao == null && !_importando) { <ListaErros Erros="Erros" /> }
 
     <section class="cartao">
         <div class="cartao-cabecalho">
@@ -43,11 +44,14 @@
     <section class="cartao">
         <div class="cartao-cabecalho">
             <h2>Processos</h2>
-            <button type="button" class="btn btn-destaque btn-pequeno" disabled="@(_macros.Count == 0)" @onclick="NovoProcesso"><Icone Nome="mais" />Novo processo</button>
+            <span class="linha-acoes">
+                <button type="button" class="btn btn-secundario btn-pequeno" @onclick="AbrirImportacao">Importar do Excel</button>
+                <button type="button" class="btn btn-destaque btn-pequeno" disabled="@(_macros.Count == 0)" @onclick="NovoProcesso"><Icone Nome="mais" />Novo processo</button>
+            </span>
         </div>
         <div class="tabela-wrap">
             <table class="tabela">
-                <thead><tr><th>Processo</th><th>Macroprocesso</th><th>Normas e requisitos obrigatórios</th><th>Situação</th><th class="acoes">Ações</th></tr></thead>
+                <thead><tr><th>Processo</th><th>Macroprocesso</th><th>Normas e requisitos relacionados</th><th>Situação</th><th class="acoes">Ações</th></tr></thead>
                 <tbody>
                     @if (_processos.Count == 0) { <tr><td colspan="5" class="vazio">Nenhum processo cadastrado.</td></tr> }
                     @foreach (var p in _processos)
@@ -59,7 +63,7 @@
                                 @foreach (var pn in p.Normas.OrderBy(x => NomeNorma(x.NormaId)))
                                 {
                                     var codigos = p.RequisitosObrigatorios.Where(r => r.Requisito?.NormaId == pn.NormaId).Select(r => r.Requisito!).OrderBy(r => r.ChaveOrdenacao, StringComparer.Ordinal).Select(r => r.Codigo).ToList();
-                                    <div><strong>@NomeNorma(pn.NormaId):</strong> @(codigos.Count == 0 ? "sem requisitos obrigatórios" : string.Join(", ", codigos))</div>
+                                    <div><strong>@NomeNorma(pn.NormaId):</strong> @(codigos.Count == 0 ? "sem requisitos relacionados" : string.Join(", ", codigos))</div>
                                 }
                             </td>
                             <td><span class="etiqueta @(p.Ativo ? "etiqueta-ativo" : "etiqueta-inativo")">@(p.Ativo ? "Ativo" : "Inativo")</span></td>
@@ -72,7 +76,7 @@
                 </tbody>
             </table>
         </div>
-        <p class="texto-suave pequeno" style="margin-top:.8rem">Alterações ficam registradas no histórico. Auditorias já programadas mantêm a configuração de requisitos registrada no momento da programação.</p>
+        <p class="texto-suave pequeno" style="margin-top:.8rem">Os requisitos relacionados são apenas sugestão: ao programar a auditoria, você escolhe quais serão auditados em cada processo. Alterações ficam registradas no histórico e não mudam auditorias já programadas.</p>
     </section>
 </div>
 
@@ -107,8 +111,8 @@
                 </div>
                 <div class="col-12"><label class="marcador"><input type="checkbox" @bind="_procEdicao.Ativo" />Ativo</label></div>
             </div>
-            <h3 style="margin-top:1rem">Normas aplicáveis e requisitos obrigatórios</h3>
-            <p class="texto-suave pequeno">Marque as normas; abaixo de cada norma marcada, selecione os requisitos obrigatórios para este processo.</p>
+            <h3 style="margin-top:1rem">Normas em que o processo é auditável</h3>
+            <p class="texto-suave pequeno">Marque as normas. Abaixo de cada norma, se quiser, marque os requisitos relacionados ao processo: eles aparecem como sugestão ao programar a auditoria.</p>
             <div class="campo" style="max-width:420px;margin-bottom:.8rem"><label for="p-busca">Filtrar requisitos</label><input id="p-busca" type="search" placeholder="Número ou título" @bind="_busca" @bind:event="oninput" /></div>
             @foreach (var n in _normas.Where(n => n.Ativo || _procEdicao.NormaIds.Contains(n.Id)))
             {
@@ -116,7 +120,7 @@
                 <div class="grupo-norma">
                     <header>
                         <label class="marcador" style="padding:0;min-height:auto"><input type="checkbox" checked="@marcada" @onchange="() => AlternarNorma(n.Id)" /><strong>@n.Nome</strong></label>
-                        @if (marcada) { <span class="texto-suave pequeno">@n.Requisitos.Count(r => _procEdicao.RequisitoIds.Contains(r.Id)) obrigatório(s)</span> }
+                        @if (marcada) { <span class="texto-suave pequeno">@n.Requisitos.Count(r => _procEdicao.RequisitoIds.Contains(r.Id)) relacionado(s)</span> }
                     </header>
                     @if (marcada)
                     {
@@ -141,7 +145,108 @@
     </Dialogo>
 }
 
+@if (_importando)
+{
+    <Dialogo Titulo="Importar processos do Excel" Largo="true" AoFechar="FecharImportacao">
+        <Corpo>
+            <ListaErros Erros="Erros" />
+            <div class="campo">
+                <label for="imp-norma" class="obrigatorio">1. Norma da planilha</label>
+                <select id="imp-norma" value="@(_impNormaId?.ToString() ?? "")" @onchange="TrocarNormaImportacao">
+                    <option value="">Selecione a norma…</option>
+                    @foreach (var n in _normas.Where(n => n.Ativo)) { <option value="@n.Id">@n.Nome</option> }
+                </select>
+                <span class="ajuda">Todos os processos da planilha serão marcados como auditáveis nesta norma.</span>
+            </div>
+            @if (_impNormaId != null)
+            {
+                <div class="campo" style="margin-top:1rem">
+                    <label for="imp-arquivo" class="obrigatorio">2. Arquivo do Excel (.xlsx) ou CSV</label>
+                    <InputFile id="imp-arquivo" accept=".xlsx,.csv" OnChange="LerPlanilha" />
+                    <span class="ajuda">A primeira aba deve ter as colunas <strong>Macroprocesso</strong> e <strong>Processo</strong> (com esses títulos na primeira linha; sem títulos, a coluna A é o macroprocesso e a B, o processo). Células de macroprocesso mescladas ou em branco repetem o valor de cima. Arquivos .xls antigos precisam ser salvos como .xlsx.</span>
+                </div>
+            }
+            @if (_impPrevia != null)
+            {
+                <h3 style="margin-top:1.2rem">3. Prévia — @_impArquivo</h3>
+                <div class="chips" style="margin-bottom:.6rem">
+                    <span class="etiqueta etiqueta-info">@_impPrevia.Where(l => l.NovoMacroprocesso).Select(l => l.Macroprocesso).Distinct().Count() macroprocesso(s) novo(s)</span>
+                    <span class="etiqueta etiqueta-info">@_impPrevia.Count(l => l.Resultado == ResultadoLinha.NovoProcesso) processo(s) novo(s)</span>
+                    <span class="etiqueta etiqueta-aviso">@_impPrevia.Count(l => l.Resultado == ResultadoLinha.NormaAdicionada) já cadastrado(s) — norma será adicionada</span>
+                    <span class="etiqueta etiqueta-inativo">@_impPrevia.Count(l => l.Resultado == ResultadoLinha.SemMudanca) já cadastrado(s) nesta norma</span>
+                </div>
+                <div class="tabela-wrap" style="max-height:340px;overflow:auto">
+                    <table class="tabela">
+                        <thead><tr><th>Linha</th><th>Macroprocesso</th><th>Processo</th><th>O que acontece</th></tr></thead>
+                        <tbody>
+                            @foreach (var l in _impPrevia)
+                            {
+                                <tr>
+                                    <td>@l.Linha</td>
+                                    <td>@l.Macroprocesso @if (l.NovoMacroprocesso) { <span class="etiqueta etiqueta-info">novo</span> }</td>
+                                    <td>@l.Processo</td>
+                                    <td>@(l.Resultado switch { ResultadoLinha.NovoProcesso => "Novo processo", ResultadoLinha.NormaAdicionada => "Já existe — passa a ser auditável nesta norma", _ => "Já existe nesta norma (sem mudança)" })</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </Corpo>
+        <Rodape>
+            <button type="button" class="btn btn-secundario" @onclick="FecharImportacao">Cancelar</button>
+            @if (_impPrevia != null)
+            {
+                <button type="button" class="btn btn-primario" disabled="@(Ocupado || _impPrevia.All(l => l.Resultado == ResultadoLinha.SemMudanca))" @onclick="ConfirmarImportacao">Importar</button>
+            }
+        </Rodape>
+    </Dialogo>
+}
+
 @code {
+    private bool _importando;
+    private int? _impNormaId;
+    private List<LinhaPlanilha>? _impLinhas;
+    private List<PreviaLinha>? _impPrevia;
+    private string _impArquivo = "";
+
+    private void AbrirImportacao() { Erros.Clear(); _importando = true; _impNormaId = null; _impLinhas = null; _impPrevia = null; }
+    private void FecharImportacao() { _importando = false; _impLinhas = null; _impPrevia = null; }
+
+    private void TrocarNormaImportacao(ChangeEventArgs e)
+    {
+        _impNormaId = int.TryParse(e.Value?.ToString(), out var n) ? n : null;
+        _impLinhas = null; _impPrevia = null; Erros.Clear();
+    }
+
+    private async Task LerPlanilha(InputFileChangeEventArgs e)
+    {
+        Erros.Clear(); _impLinhas = null; _impPrevia = null;
+        try
+        {
+            if (e.File.Size > ImportacaoProcessosServico.TamanhoMaximoBytes) { Erros.Add("O arquivo deve ter no máximo 5 MB."); return; }
+            using var ms = new MemoryStream();
+            await e.File.OpenReadStream(ImportacaoProcessosServico.TamanhoMaximoBytes).CopyToAsync(ms);
+            _impLinhas = ImportacaoProcessosServico.Ler(ms.ToArray(), e.File.Name);
+            _impArquivo = e.File.Name;
+            _impPrevia = await Importacao.PreverAsync(await ObterAtorAsync(), _impNormaId!.Value, _impLinhas);
+        }
+        catch (RegraNegocioException ex) { Erros.AddRange(ex.Erros); }
+        catch (IOException) { Erros.Add("Não foi possível ler o arquivo."); }
+    }
+
+    private async Task ConfirmarImportacao()
+    {
+        if (_impLinhas == null || _impNormaId == null) return;
+        ResumoImportacao? r = null;
+        if (await Executar(async () => r = await Importacao.ImportarAsync(await ObterAtorAsync(), _impNormaId.Value, _impLinhas, _impArquivo)))
+        {
+            Notificacoes.Sucesso($"Importação concluída: {r!.MacroprocessosNovos} macroprocesso(s) e {r.ProcessosNovos} processo(s) novos; {r.ProcessosAtualizados} passaram a ser auditáveis na norma.");
+            FecharImportacao();
+            await Recarregar();
+        }
+    }
+
     private List<Macroprocesso> _macros = new();
     private List<Processo> _processos = new();
     private List<Norma> _normas = new();
@@ -184,7 +289,7 @@
         if (_procEdicao.NormaIds.Contains(normaId))
         {
             var reqs = _normas.First(n => n.Id == normaId).Requisitos.Where(r => _procEdicao.RequisitoIds.Contains(r.Id)).ToList();
-            if (reqs.Count > 0 && !await Confirmacao.ConfirmarAsync("Desmarcar norma", $"Os {reqs.Count} requisito(s) obrigatório(s) desta norma serão retirados do processo.", "Desmarcar"))
+            if (reqs.Count > 0 && !await Confirmacao.ConfirmarAsync("Desmarcar norma", $"Os {reqs.Count} requisito(s) relacionado(s) desta norma serão retirados do processo.", "Desmarcar"))
                 return;
             _procEdicao.NormaIds.Remove(normaId);
             foreach (var r in reqs) _procEdicao.RequisitoIds.Remove(r.Id);

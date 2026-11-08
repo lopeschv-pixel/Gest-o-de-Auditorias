@@ -50,28 +50,35 @@ public class ProgramacaoTestes
     }
 
     [Fact]
-    public async Task Carrega_obrigatorios_dos_processos_e_impede_retirada()
+    public async Task Requisitos_escolhidos_por_processo_e_validados()
     {
         using var amb = new Ambiente();
         var p = amb.Interna();
         p.NormaIds = new() { amb.Iso9001, amb.Iso14001 };
         p.ProcessoIds = new() { amb.ProcCompras, amb.ProcRecebimento };
-        p.RequisitoIds = new() { amb.Req(amb.Iso9001, "4.1") }; // adicional; faltam obrigatórios
+        p.Itens = new() { new(amb.ProcCompras, amb.Req(amb.Iso9001, "8.4")), new(null, amb.Req(amb.Iso9001, "4.1")) };
+        // Recebimento sem requisitos: bloqueia, explicando qual processo falta.
         var ex = await Assert.ThrowsAsync<RegraNegocioException>(() => amb.Programacao.SalvarAsync(amb.Admin, p));
-        Assert.Contains(ex.Erros, e => e.Contains("8.4") && e.Contains("obrigatório"));
-
-        var dados = await amb.Programacao.ObterDadosFormularioAsync(amb.Admin);
-        var obrig = RegrasRequisitos.Obrigatorios(dados.Processos.Where(x => p.ProcessoIds.Contains(x.Id)), p.NormaIds);
-        p.RequisitoIds.UnionWith(obrig.Keys);
+        Assert.Contains(ex.Erros, e => e.Contains("Recebimento"));
+        // Requisito de processo não selecionado é recusado.
+        p.Itens.Add(new(amb.ProcRecebimento, amb.Req(amb.Iso9001, "8.6")));
+        p.Itens.Add(new(999, amb.Req(amb.Iso9001, "8.5.1")));
+        await Assert.ThrowsAsync<RegraNegocioException>(() => amb.Programacao.SalvarAsync(amb.Admin, p));
+        p.Itens.RemoveWhere(i => i.ProcessoId == 999);
+        // O mesmo requisito pode ser auditado em dois processos diferentes; nada é incluído automaticamente.
+        p.Itens.Add(new(amb.ProcRecebimento, amb.Req(amb.Iso9001, "8.4")));
         var id = await amb.Programacao.SalvarAsync(amb.Admin, p);
         var a = await amb.Programacao.ObterDetalheAsync(amb.Admin, id);
-        Assert.Equal(new[] { "4.1", "8.1", "8.4", "8.4.1", "8.6" }, a.Requisitos.Select(r => r.Codigo).OrderBy(c => c).ToArray());
-        Assert.Equal(1, a.Requisitos.Count(r => r.Codigo == "8.4")); // sem duplicação entre processos
-        var r84 = a.Requisitos.Single(r => r.Codigo == "8.4");
-        Assert.True(r84.Obrigatorio);
-        Assert.Contains("Compras", r84.Origem);
-        Assert.Contains("Recebimento", r84.Origem);
-        Assert.False(a.Requisitos.Single(r => r.Codigo == "4.1").Obrigatorio);
+        Assert.Equal(4, a.Requisitos.Count);
+        Assert.Equal(new[] { "Compras", "Recebimento" }, a.Requisitos.Where(r => r.Codigo == "8.4").Select(r => r.NomeProcesso).OrderBy(x => x));
+        Assert.Equal("Geral", a.Requisitos.Single(r => r.Codigo == "4.1").ProcessoExibicao);
+        Assert.DoesNotContain(a.Requisitos, r => r.Codigo == "8.1"); // relacionado ao processo, mas não escolhido
+
+        // Processo não auditável na norma do requisito é recusado.
+        var ed = (await amb.Programacao.ObterParaEdicaoAsync(amb.Admin, id)).Dados;
+        ed.Itens.Add(new(amb.ProcRecebimento, amb.Req(amb.Iso14001, "8.1")));
+        ex = await Assert.ThrowsAsync<RegraNegocioException>(() => amb.Programacao.SalvarAsync(amb.Admin, ed));
+        Assert.Contains(ex.Erros, e => e.Contains("não está cadastrado como auditável"));
     }
 
     [Fact]
@@ -87,12 +94,12 @@ public class ProgramacaoTestes
         });
         var a = await amb.Programacao.ObterDetalheAsync(amb.Admin, id);
         Assert.Equal(new[] { "8.4", "8.6" }, a.Requisitos.Select(r => r.Codigo).OrderBy(c => c).ToArray());
-        // Editar outro campo da programação mantém os obrigatórios registrados.
+        // Editar outro campo da programação mantém os requisitos registrados.
         var ed = (await amb.Programacao.ObterParaEdicaoAsync(amb.Admin, id)).Dados;
         ed.MesPrevisto = 11;
         await amb.Programacao.SalvarAsync(amb.Admin, ed);
         a = await amb.Programacao.ObterDetalheAsync(amb.Admin, id);
-        Assert.True(a.Requisitos.Single(r => r.Codigo == "8.6").Obrigatorio);
+        Assert.Equal("Recebimento", a.Requisitos.Single(r => r.Codigo == "8.6").NomeProcesso);
     }
 
     [Fact]
@@ -173,7 +180,7 @@ public class ProgramacaoTestes
         var id = await amb.ComPlano(amb.Interna());
         await amb.Relatorios.IniciarAsync(amb.Admin, id);
         var ed = (await amb.Programacao.ObterParaEdicaoAsync(amb.Admin, id)).Dados;
-        ed.RequisitoIds.Add(amb.Req(amb.Iso9001, "4.1"));
+        ed.Itens.Add(new(null, amb.Req(amb.Iso9001, "4.1")));
         var ex = await Assert.ThrowsAsync<RegraNegocioException>(() => amb.Programacao.SalvarAsync(amb.Admin, ed));
         Assert.Contains(ex.Erros, e => e.Contains("relatório"));
         ed = (await amb.Programacao.ObterParaEdicaoAsync(amb.Admin, id)).Dados;
@@ -509,7 +516,7 @@ public class PdfTestes
         using var amb = new Ambiente();
         var normas = await amb.Normas.ListarAsync(incluirRequisitos: true);
         var todos = normas.Single(n => n.Id == amb.Iso9001).Requisitos.Select(r => r.Id).ToHashSet();
-        var p = amb.Interna(); p.RequisitoIds.UnionWith(todos);
+        var p = amb.Interna(); p.Itens.UnionWith(todos.Select(r => new ItemRequisito(null, r)));
         var id = await amb.Programacao.SalvarAsync(amb.Admin, p);
         var plano = new PlanoEdicao { AuditoriaId = id, Local = new string('L', 250), GestorNome = "Gestor", GestorEmail = "g@exemplo.invalid" };
         for (int d = 1; d <= 6; d++)

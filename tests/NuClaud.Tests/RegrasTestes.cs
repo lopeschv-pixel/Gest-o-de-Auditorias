@@ -75,13 +75,11 @@ public class RegrasTestes
     }
 
     [Fact]
-    public void Requisitos_obrigatorios_unidos_sem_duplicacao_e_filtrados_por_norma()
+    public void Requisitos_sugeridos_do_processo_filtrados_por_norma_e_situacao()
     {
-        var p1 = new ProcessoInfo(1, "Compras", 1, new[] { 1, 2 }, new[] { new RequisitoProcessoInfo(100, 1, true), new RequisitoProcessoInfo(200, 2, true) });
-        var p2 = new ProcessoInfo(2, "Recebimento", 1, new[] { 1 }, new[] { new RequisitoProcessoInfo(100, 1, true), new RequisitoProcessoInfo(101, 1, false) });
-        var r = RegrasRequisitos.Obrigatorios(new[] { p1, p2 }, new HashSet<int> { 1 });
-        Assert.Equal(new[] { 100 }, r.Keys.ToArray()); // 200 é de norma não selecionada; 101 inativo
-        Assert.Equal(new[] { "Compras", "Recebimento" }, r[100]);
+        var p = new ProcessoInfo(1, "Compras", 1, new[] { 1, 2 }, new[] { new RequisitoProcessoInfo(100, 1, true), new RequisitoProcessoInfo(200, 2, true), new RequisitoProcessoInfo(101, 1, false) });
+        Assert.Equal(new[] { 100 }, RegrasRequisitos.Sugeridos(p, new HashSet<int> { 1 })); // 200 é de norma não selecionada; 101 inativo
+        Assert.Equal(new[] { 100, 200 }, RegrasRequisitos.Sugeridos(p, new HashSet<int> { 1, 2 }));
     }
 
     [Fact]

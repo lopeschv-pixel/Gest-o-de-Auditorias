@@ -122,7 +122,7 @@
                 <summary style="cursor:pointer;font-weight:600;padding:.4rem 0">Ver requisitos e situação de classificação</summary>
                 <div class="tabela-wrap" style="margin-top:.5rem">
                     <table class="tabela">
-                        <thead><tr><th>Norma</th><th>Requisito</th><th>Classificação</th></tr></thead>
+                        <thead><tr><th>Norma</th><th>Requisito</th>@if (_a.Tipo == TipoAuditoria.Interna) { <th>Processo</th> }<th>Classificação</th></tr></thead>
                         <tbody>
                             @foreach (var r in _a.Requisitos)
                             {
@@ -130,6 +130,7 @@
                                 <tr>
                                     <td>@r.NomeNorma</td>
                                     <td>@OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)</td>
+                                    @if (_a.Tipo == TipoAuditoria.Interna) { <td>@r.ProcessoExibicao</td> }
                                     <td>@if (classes.Count == 0) { <span class="etiqueta etiqueta-aviso">Pendente</span> } else { @string.Join(" / ", classes) }</td>
                                 </tr>
                             }
@@ -166,7 +167,7 @@
                             @if (RegrasRelatorio.UsaRequisitos(c.Classificacao))
                             {
                                 <dt>Requisitos</dt>
-                                <dd>@string.Join("; ", _a.Requisitos.Where(r => c.AuditoriaRequisitoIds.Contains(r.Id)).Select(r => $"{r.NomeNorma} {r.Codigo} — {r.Titulo}"))</dd>
+                                <dd>@string.Join("; ", _a.Requisitos.Where(r => c.AuditoriaRequisitoIds.Contains(r.Id)).Select(r => $"{r.NomeNorma} {r.Codigo} — {r.Titulo}" + (_a.Tipo == TipoAuditoria.Interna ? $" · {r.ProcessoExibicao}" : "")))</dd>
                             }
                             @switch (c.Classificacao)
                             {
@@ -272,7 +273,7 @@
                     <span class="rotulo obrigatorio">Requisitos auditados</span>
                     <span class="ajuda">Selecione um ou mais requisitos@(_edicao.Classificacao == ClassificacaoConstatacao.NaoConformidade ? " (uma não conformidade pode abranger vários requisitos)" : "").</span>
                     <SeletorMultiplo Id="req-const" Rotulo="Requisitos auditados" Placeholder="Selecione os requisitos" MaxResumo="10"
-                                     Opcoes="@_a.Requisitos.Select(r => new OpcaoSelecao(r.Id, $"{r.Codigo} — {r.Titulo}", r.NomeNorma)).ToList()"
+                                     Opcoes="@_a.Requisitos.Select(r => new OpcaoSelecao(r.Id, $"{r.Codigo} — {r.Titulo}" + (_a.Tipo == TipoAuditoria.Interna ? $" · {r.ProcessoExibicao}" : ""), r.NomeNorma)).ToList()"
                                      Selecionados="_edicao.AuditoriaRequisitoIds" SelecionadosChanged="v => _edicao.AuditoriaRequisitoIds = v" />
                 </div>
             }

@@ -51,9 +51,9 @@ public sealed class RelatorioEdicao
     public string? NumeroRqf { get; set; }
 }
 
-public sealed record RequisitoPendente(int AuditoriaRequisitoId, string Norma, string Codigo, string Titulo)
+public sealed record RequisitoPendente(int AuditoriaRequisitoId, string Norma, string Codigo, string Titulo, string Processo = "Geral")
 {
-    public string Exibicao => $"{Norma} — {OrdenacaoRequisitos.Exibicao(Codigo, Titulo)}";
+    public string Exibicao => $"{Norma} — {OrdenacaoRequisitos.Exibicao(Codigo, Titulo)} · {Processo}";
 }
 
 public sealed record ResultadoConclusao(bool Concluido, ResultadoCobertura Cobertura, IReadOnlyList<RequisitoPendente> Pendentes, IReadOnlyList<string> Erros);
@@ -238,7 +238,7 @@ public class RelatorioServico
 
         var cobertura = CalcularCobertura(a, dto.Constatacoes);
         var porId = a.Requisitos.ToDictionary(r => r.Id);
-        var pendentes = cobertura.Pendentes.Select(id => porId[id]).Select(r => new RequisitoPendente(r.Id, r.NomeNorma, r.Codigo, r.Titulo)).ToList();
+        var pendentes = cobertura.Pendentes.Select(id => porId[id]).Select(r => new RequisitoPendente(r.Id, r.NomeNorma, r.Codigo, r.Titulo, r.ProcessoExibicao)).ToList();
         var bloqueios = new List<string>();
         if (concluir)
         {
@@ -280,7 +280,7 @@ public class RelatorioServico
         Constatacoes = a.Relatorio.Constatacoes.OrderBy(c => c.Numero).Select(c => new
         {
             c.Numero, c.Classificacao,
-            Requisitos = c.Requisitos.Select(r => a.Requisitos.FirstOrDefault(x => x.Id == r.AuditoriaRequisitoId) is { } ar ? $"{ar.NomeNorma} {ar.Codigo}" : "?").ToList(),
+            Requisitos = c.Requisitos.Select(r => a.Requisitos.FirstOrDefault(x => x.Id == r.AuditoriaRequisitoId) is { } ar ? $"{ar.NomeNorma} {ar.Codigo} · {ar.ProcessoExibicao}" : "?").ToList(),
             c.Evidencia, c.DescricaoNaoConformidade, c.EvidenciasObjetivas, c.NumeroPac, c.Observacao, c.OportunidadeMelhoria
         }).ToList()
     };

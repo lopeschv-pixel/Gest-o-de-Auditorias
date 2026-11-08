@@ -189,8 +189,12 @@ public class NuClaudDbContext : DbContext
             e.Property(x => x.Titulo).HasMaxLength(300).IsRequired();
             e.Property(x => x.ChaveOrdenacao).HasMaxLength(40).IsRequired();
             e.Property(x => x.Origem).HasMaxLength(1000);
-            e.HasIndex(x => new { x.AuditoriaId, x.RequisitoId }).IsUnique();
+            e.Property(x => x.NomeProcesso).HasMaxLength(150);
+            e.Ignore(x => x.ProcessoExibicao);
+            // Um mesmo requisito pode ser auditado em processos diferentes; no máximo uma vez como "geral" (ProcessoId nulo).
+            e.HasIndex(x => new { x.AuditoriaId, x.RequisitoId, x.ProcessoId }).IsUnique().HasFilter(null);
             e.HasOne(x => x.Requisito).WithMany().HasForeignKey(x => x.RequisitoId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Processo).WithMany().HasForeignKey(x => x.ProcessoId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<Plano>(e =>

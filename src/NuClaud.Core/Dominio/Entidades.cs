@@ -273,10 +273,17 @@ public class AuditoriaRequisito
     public string Codigo { get; set; } = "";
     public string Titulo { get; set; } = "";
     public string ChaveOrdenacao { get; set; } = "";
-    /// <summary>Veio do cadastro de processo (requisito obrigatório).</summary>
+    /// <summary>Processo em que o requisito será auditado (nulo = requisito geral, sem processo específico).</summary>
+    public int? ProcessoId { get; set; }
+    public Processo? Processo { get; set; }
+    /// <summary>Retrato do nome do processo no momento da programação.</summary>
+    public string? NomeProcesso { get; set; }
+    /// <summary>Legado (versões anteriores): requisito incluído automaticamente pelo processo.</summary>
     public bool Obrigatorio { get; set; }
-    /// <summary>Processos de origem (retrato, separado por "; ").</summary>
+    /// <summary>Legado (versões anteriores): processos de origem.</summary>
     public string? Origem { get; set; }
+
+    public string ProcessoExibicao => NomeProcesso ?? "Geral";
 }
 
 // ------------------------------------------------------------------

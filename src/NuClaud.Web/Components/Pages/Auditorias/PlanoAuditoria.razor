@@ -167,9 +167,9 @@
                 {
                     <div class="tabela-wrap">
                         <table class="tabela">
-                            <thead><tr><th>Norma</th><th>Requisito</th></tr></thead>
+                            <thead><tr><th>Norma</th><th>Requisito</th>@if (_a.Tipo == TipoAuditoria.Interna) { <th>Processo</th> }</tr></thead>
                             <tbody>
-                                @foreach (var r in _a.Requisitos) { <tr><td>@r.NomeNorma</td><td>@OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)</td></tr> }
+                                @foreach (var r in _a.Requisitos) { <tr><td>@r.NomeNorma</td><td>@OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)</td>@if (_a.Tipo == TipoAuditoria.Interna) { <td>@r.ProcessoExibicao</td> }</tr> }
                             </tbody>
                         </table>
                     </div>

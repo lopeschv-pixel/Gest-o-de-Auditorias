@@ -379,6 +379,10 @@ namespace NuClaud.Core.Dados.Migracoes
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("NomeProcesso")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
                     b.Property<int>("NormaId")
                         .HasColumnType("int");
 
@@ -388,6 +392,9 @@ namespace NuClaud.Core.Dados.Migracoes
                     b.Property<string>("Origem")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("ProcessoId")
+                        .HasColumnType("int");
 
                     b.Property<int>("RequisitoId")
                         .HasColumnType("int");
@@ -399,9 +406,11 @@ namespace NuClaud.Core.Dados.Migracoes
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ProcessoId");
+
                     b.HasIndex("RequisitoId");
 
-                    b.HasIndex("AuditoriaId", "RequisitoId")
+                    b.HasIndex("AuditoriaId", "RequisitoId", "ProcessoId")
                         .IsUnique();
 
                     b.ToTable("AuditoriaRequisitos");
@@ -1154,11 +1163,18 @@ namespace NuClaud.Core.Dados.Migracoes
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("NuClaud.Core.Dominio.Processo", "Processo")
+                        .WithMany()
+                        .HasForeignKey("ProcessoId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("NuClaud.Core.Dominio.Requisito", "Requisito")
                         .WithMany()
                         .HasForeignKey("RequisitoId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Processo");
 
                     b.Navigation("Requisito");
                 });

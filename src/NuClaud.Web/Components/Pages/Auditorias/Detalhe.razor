@@ -86,14 +86,14 @@
             {
                 <div class="tabela-wrap">
                     <table class="tabela">
-                        <thead><tr><th>Norma</th><th>Requisito</th><th>Origem</th></tr></thead>
+                        <thead><tr><th>Norma</th><th>Requisito</th><th>Processo</th></tr></thead>
                         <tbody>
                             @foreach (var r in _a.Requisitos)
                             {
                                 <tr>
                                     <td>@r.NomeNorma</td>
                                     <td>@OrdenacaoRequisitos.Exibicao(r.Codigo, r.Titulo)</td>
-                                    <td>@(r.Obrigatorio ? $"Obrigatório — {r.Origem}" : "Adicional")</td>
+                                    <td>@r.ProcessoExibicao</td>
                                 </tr>
                             }
                         </tbody>

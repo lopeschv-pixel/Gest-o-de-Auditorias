@@ -9,6 +9,7 @@
 | SQL Server (testado) | 2022 Developer (contêiner `mcr.microsoft.com/mssql/server:2022-latest`) | — |
 | PDFsharp / MigraDoc | **6.2.4** (fixado) | MIT |
 | SkiaSharp (validação/normalização do logotipo) | 4.154.0 | MIT |
+| ClosedXML (leitura de planilhas .xlsx na importação de processos) | 0.105.1 | MIT (dependências: DocumentFormat.OpenXml MIT, SixLabors.Fonts 1.0 Apache-2.0) |
 | Microsoft.Extensions.Identity.Core (somente `PasswordHasher`) | 10.0.14 | MIT |
 | Fonte da interface: Inter | servida em `wwwroot/fonts` | SIL OFL 1.1 |
 | Fonte dos PDFs: Carlito (métrica compatível com Calibri) | embutida no assembly | SIL OFL 1.1 |

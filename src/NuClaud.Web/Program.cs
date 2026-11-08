@@ -43,6 +43,7 @@ builder.Services.AddScoped<RelatorioServico>();
 builder.Services.AddScoped<ConsultasServico>();
 builder.Services.AddScoped<IdentidadeVisualServico>();
 builder.Services.AddScoped<PdfServico>();
+builder.Services.AddScoped<ImportacaoProcessosServico>();
 builder.Services.AddScoped<AtorAtual>();
 builder.Services.AddScoped<NuClaud.Web.Components.Shared.ServicoNotificacao>();
 builder.Services.AddScoped<NuClaud.Web.Components.Shared.ServicoConfirmacao>();

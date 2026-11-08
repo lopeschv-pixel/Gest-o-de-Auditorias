@@ -99,20 +99,21 @@ public class SementeDemonstracao
         }
 
         var ano = FusoHorario.AnoAtual(_relogio) + 1;
-        HashSet<int> Reqs(params (int Norma, string Codigo)[] r) => r.Select(x => R(normas.First(n => n.Id == x.Norma).Nome, x.Codigo)).ToHashSet();
+        HashSet<ItemRequisito> Reqs(params (int Norma, string Codigo)[] r) => r.Select(x => new ItemRequisito(null, R(normas.First(n => n.Id == x.Norma).Nome, x.Codigo))).ToHashSet();
         async Task<int> Programar(ProgramacaoEdicao p)
         {
             // Inclui automaticamente os obrigatórios dos processos.
             var dados = await prog.ObterDadosFormularioAsync(s);
-            var obrig = RegrasRequisitos.Obrigatorios(dados.Processos.Where(x => p.ProcessoIds.Contains(x.Id)), p.NormaIds);
-            p.RequisitoIds.UnionWith(obrig.Keys);
+            // Para cada processo, audita os requisitos relacionados no cadastro (sugestão).
+            foreach (var pi in dados.Processos.Where(x => p.ProcessoIds.Contains(x.Id)))
+                foreach (var rid in RegrasRequisitos.Sugeridos(pi, p.NormaIds)) p.Itens.Add(new ItemRequisito(pi.Id, rid));
             return await prog.SalvarAsync(s, p);
         }
 
         // 1) Interna concluída
         var a1 = await Programar(new ProgramacaoEdicao { Tipo = TipoAuditoria.Interna, Ano = ano, MesPrevisto = 3, NormaIds = { iso9001 },
             AreaIds = { areas["Suprimentos"], areas["Garantia da Qualidade"] }, ProcessoIds = { compras, recebimento },
-            RequisitoIds = Reqs((iso9001, "7.5.3")), LiderId = ana, AuditorIds = { diego }, ObservadorIds = { elisa } });
+            Itens = Reqs((iso9001, "7.5.3")), LiderId = ana, AuditorIds = { diego }, ObservadorIds = { elisa } });
         await planos.SalvarAsync(s, new PlanoEdicao { AuditoriaId = a1, Local = "Sede — Itaguaí/RJ, prédio administrativo", GestorNome = "Gestor fictício de Suprimentos",
             GestorEmail = "gestor.suprimentos@exemplo.invalid", Periodos = {
                 new() { Data = new DateOnly(ano, 3, 16), HoraInicio = new TimeOnly(8, 0), HoraFim = new TimeOnly(12, 0) },
@@ -146,7 +147,7 @@ public class SementeDemonstracao
             FornecedorNome = "Fornecedor Exemplo de Aços Ltda. (fictício)", FornecedorCnpj = GerarCnpj("112223330001"),
             FornecedorEndereco = "Rua Fictícia, 100 — Distrito Industrial — Cidade Exemplo/RJ",
             EscopoFornecimento = "Fornecimento de chapas e forjados para vasos de pressão (exemplo fictício).",
-            RequisitoIds = Reqs((iso9001, "8.4"), (iso9001, "8.5.2"), (iso9001, "8.6")).Append(R("ASME III", "1.1")).ToHashSet(),
+            Itens = Reqs((iso9001, "8.4"), (iso9001, "8.5.2"), (iso9001, "8.6")).Append(new ItemRequisito(null, R("ASME III", "1.1"))).ToHashSet(),
             LiderId = bruno, AuditorIds = { diego } });
         await planos.SalvarAsync(s, new PlanoEdicao { AuditoriaId = a3, Local = "Instalações do fornecedor", GestorNome = "Representante fictício do fornecedor",
             GestorEmail = "qualidade@fornecedor-exemplo.invalid",
@@ -163,7 +164,7 @@ public class SementeDemonstracao
         await Programar(new ProgramacaoEdicao { Tipo = TipoAuditoria.Fornecedor, Ano = ano, MesPrevisto = 8, NormaIds = { iso9001 },
             FornecedorNome = "Usinagem Modelo S.A. (fictício)", FornecedorCnpj = GerarCnpj("445556660001"),
             FornecedorEndereco = "Avenida Exemplo, 2000 — Cidade Modelo/SP", EscopoFornecimento = "Serviços de usinagem de precisão (exemplo fictício).",
-            RequisitoIds = Reqs((iso9001, "8.4.1"), (iso9001, "8.5.1")), LiderId = carla, AuditorIds = { felipe } });
+            Itens = Reqs((iso9001, "8.4.1"), (iso9001, "8.5.1")), LiderId = carla, AuditorIds = { felipe } });
 
         // 6) Interna com processo de documentos
         await Programar(new ProgramacaoEdicao { Tipo = TipoAuditoria.Interna, Ano = ano, MesPrevisto = 9, NormaIds = { iso9001 },

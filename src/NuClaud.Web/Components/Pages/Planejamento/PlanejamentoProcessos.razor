@@ -1,0 +1,176 @@
+@page "/planejamento/processos"
+@attribute [Authorize(Policy = "Administrador")]
+@inherits PaginaBase
+@inject ConsultasServico Consultas
+@inject NormaServico NormasSrv
+@inject IRelogio Relogio
+
+<PageTitle>Planejamento de processos — NUCLAUD</PageTitle>
+<PageHeader Titulo="Planejamento de processos" Subtitulo="Verifique se todos os processos e todos os requisitos da norma foram auditados no período." />
+
+<div class="conteudo">
+    @if (ErroCarga != null) { <div class="alerta alerta-erro" role="alert">@ErroCarga</div> }
+    <section class="cartao">
+        <div class="filtros" style="grid-template-columns: minmax(200px,1.2fr) minmax(200px,1fr) minmax(220px,1.3fr) auto">
+            <div class="campo">
+                <label for="cob-norma">Norma</label>
+                <select id="cob-norma" value="@_normaId" @onchange="e => Trocar(() => _normaId = int.Parse(e.Value!.ToString()!))">
+                    @foreach (var n in _normas) { <option value="@n.Id">@n.Nome</option> }
+                </select>
+            </div>
+            <div class="campo">
+                <span class="rotulo" id="rot-periodo">Período</span>
+                <div class="opcoes-radio horizontal" role="radiogroup" aria-labelledby="rot-periodo">
+                    <label class="marcador"><input type="radio" name="periodo" checked="@(!_ciclo)" @onchange="() => Trocar(() => _ciclo = false)" />Ano</label>
+                    <label class="marcador"><input type="radio" name="periodo" checked="@_ciclo" @onchange="() => Trocar(() => _ciclo = true)" />Intervalo (ciclo)</label>
+                </div>
+            </div>
+            <div class="campo">
+                @if (!_ciclo)
+                {
+                    <label for="cob-ano">Ano</label>
+                    <select id="cob-ano" value="@_anoDe" @onchange="e => Trocar(() => _anoDe = _anoAte = int.Parse(e.Value!.ToString()!))">
+                        @foreach (var a in _anos) { <option value="@a">@a</option> }
+                    </select>
+                }
+                else
+                {
+                    <span class="rotulo">De / até</span>
+                    <div style="display:flex;gap:.5rem">
+                        <select aria-label="Ano inicial" value="@_anoDe" @onchange="e => Trocar(() => { _anoDe = int.Parse(e.Value!.ToString()!); if (_anoAte < _anoDe) _anoAte = _anoDe; })">
+                            @foreach (var a in _anos) { <option value="@a">@a</option> }
+                        </select>
+                        <select aria-label="Ano final" value="@_anoAte" @onchange="e => Trocar(() => { _anoAte = int.Parse(e.Value!.ToString()!); if (_anoDe > _anoAte) _anoDe = _anoAte; })">
+                            @foreach (var a in _anos) { <option value="@a">@a</option> }
+                        </select>
+                    </div>
+                }
+            </div>
+            <label class="marcador" style="align-self:end"><input type="checkbox" checked="@_soPendentes" @onchange="e => _soPendentes = (bool)e.Value!" />Só o que falta realizar</label>
+        </div>
+        <p class="texto-suave pequeno" style="margin:.7rem 0 0"><strong>Programado:</strong> está em auditoria programada no período. <strong>Realizado:</strong> a auditoria tem relatório concluído. Um requisito conta para a norma em qualquer processo em que for auditado (ou como requisito geral).</p>
+    </section>
+
+    @if (_cob != null)
+    {
+        var periodo = _cob.AnoInicial == _cob.AnoFinal ? _cob.AnoInicial.ToString() : $"{_cob.AnoInicial} a {_cob.AnoFinal}";
+        var (pr, pp, pn) = CoberturaNorma.Contar(_cob.Processos, x => x.Situacao);
+        var (rr, rp, rn) = CoberturaNorma.Contar(_cob.Requisitos, x => x.Situacao);
+        <div class="grade" style="margin-bottom:1.4rem">
+            @Resumo($"Processos auditáveis — {_cob.Norma} · {periodo}", pr, pp, pn)
+            @Resumo($"Requisitos da norma — {_cob.Norma} · {periodo}", rr, rp, rn)
+        </div>
+
+        <section class="cartao">
+            <h2 class="secao-titulo">Processos (@_cob.Processos.Count)</h2>
+            @if (_cob.Processos.Count == 0)
+            {
+                <p class="texto-suave">Nenhum processo cadastrado como auditável nesta norma. Cadastre ou importe do Excel em Administração › Macroprocessos e processos.</p>
+            }
+            else
+            {
+                <div class="tabela-wrap">
+                    <table class="tabela">
+                        <thead><tr><th>Macroprocesso</th><th>Processo</th><th>Auditorias no período</th><th>Requisitos auditados no processo</th><th>Situação</th></tr></thead>
+                        <tbody>
+                            @foreach (var x in _cob.Processos.Where(x => !_soPendentes || x.Situacao != SituacaoCobertura.Realizado))
+                            {
+                                <tr>
+                                    <td>@x.Macroprocesso</td>
+                                    <td><strong>@x.Processo</strong></td>
+                                    <td>@if (x.Auditorias.Count == 0) { <span>—</span> } else { foreach (var a in x.Auditorias) { <div><a href="/auditorias/@a.AuditoriaId">@a.Codigo</a> <span class="texto-suave pequeno">(@Rotulos.NomeMes(a.Mes)/@a.Ano)</span></div> } }</td>
+                                    <td>@x.RequisitosAuditados</td>
+                                    <td>@Etiqueta(x.Situacao)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="cartao">
+            <h2 class="secao-titulo">Requisitos da norma (@_cob.Requisitos.Count)</h2>
+            @if (_cob.Requisitos.Count == 0)
+            {
+                <p class="texto-suave">Esta norma ainda não tem requisitos cadastrados.</p>
+            }
+            else
+            {
+                <div class="tabela-wrap">
+                    <table class="tabela">
+                        <thead><tr><th>Requisito</th><th>Onde foi programado (auditoria · processo)</th><th>Situação</th></tr></thead>
+                        <tbody>
+                            @foreach (var x in _cob.Requisitos.Where(x => !_soPendentes || x.Situacao != SituacaoCobertura.Realizado))
+                            {
+                                <tr>
+                                    <td>@OrdenacaoRequisitos.Exibicao(x.Codigo, x.Titulo)</td>
+                                    <td>@if (x.Onde.Count == 0) { <span>—</span> } else { foreach (var o in x.Onde) { <div><a href="/auditorias/@o.AuditoriaId">@o.Codigo</a> · @o.Processo</div> } }</td>
+                                    <td>@Etiqueta(x.Situacao)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private List<Norma> _normas = new();
+    private List<int> _anos = new();
+    private int _normaId, _anoDe, _anoAte;
+    private bool _ciclo, _soPendentes;
+    private CoberturaNorma? _cob;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Carregar(async () =>
+        {
+            _normas = await NormasSrv.ListarAsync();
+            var atual = FusoHorario.AnoAtual(Relogio);
+            var anos = await Consultas.AnosDisponiveisAsync();
+            var min = Math.Min(atual - 2, anos.DefaultIfEmpty(atual).Min());
+            var max = Math.Max(atual + 3, anos.DefaultIfEmpty(atual).Max());
+            _anos = Enumerable.Range(min, max - min + 1).ToList();
+            _anoDe = _anoAte = anos.Where(a => a >= atual).DefaultIfEmpty(atual).Min();
+            _normaId = _normas.FirstOrDefault()?.Id ?? 0;
+            await Recarregar();
+        });
+    }
+
+    private async Task Recarregar()
+    {
+        if (_normaId == 0) return;
+        _cob = await Consultas.CoberturaAsync(await ObterAtorAsync(), _normaId, _anoDe, _ciclo ? _anoAte : _anoDe);
+    }
+
+    private async Task Trocar(Action a) { a(); await Carregar(Recarregar); }
+
+    private static RenderFragment Etiqueta(SituacaoCobertura s) => s switch
+    {
+        SituacaoCobertura.Realizado => @<span class="etiqueta etiqueta-ativo">✔ Realizado</span>,
+        SituacaoCobertura.Programado => @<span class="etiqueta etiqueta-info">◐ Programado</span>,
+        _ => @<span class="etiqueta etiqueta-aviso" style="color:var(--perigo);background:var(--perigo-fundo);border-color:#f1b5ae">✖ Não planejado</span>
+    };
+
+    private static RenderFragment Resumo(string titulo, int realizados, int programados, int naoPlanejados)
+    {
+        var total = realizados + programados + naoPlanejados;
+        var pctPlan = total == 0 ? 0 : (realizados + programados) * 100 / total;
+        var pctReal = total == 0 ? 0 : realizados * 100 / total;
+        return @<section class="cartao col-6" style="margin:0">
+            <h2 style="font-size:1.05rem">@titulo</h2>
+            <p style="margin:0"><strong>@(realizados + programados) de @total</strong> planejados no período · <strong>@realizados</strong> realizados</p>
+            <div class="progresso" role="progressbar" aria-valuemin="0" aria-valuemax="@total" aria-valuenow="@(realizados + programados)" aria-label="Planejados no período">
+                <span style="width:@pctPlan%;background:linear-gradient(90deg, var(--ciano-forte) @(pctPlan == 0 ? 0 : pctReal * 100 / pctPlan)%, #7fc8d8 0)"></span>
+            </div>
+            <div class="chips">
+                <span class="etiqueta etiqueta-ativo">@realizados realizado(s)</span>
+                <span class="etiqueta etiqueta-info">@programados programado(s)</span>
+                <span class="etiqueta" style="color:var(--perigo)">@naoPlanejados não planejado(s)</span>
+            </div>
+        </section>;
+    }
+}

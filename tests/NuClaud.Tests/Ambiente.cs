@@ -99,7 +99,7 @@ public sealed class Ambiente : IDisposable
     public ProgramacaoEdicao Interna(int ano = 2027, int? lider = null) => new()
     {
         Tipo = TipoAuditoria.Interna, Ano = ano, MesPrevisto = 5, NormaIds = { Iso9001 }, AreaIds = { AreaA },
-        ProcessoIds = { ProcRecebimento }, RequisitoIds = { Req(Iso9001, "8.4"), Req(Iso9001, "8.6") },
+        ProcessoIds = { ProcRecebimento }, Itens = { new(ProcRecebimento, Req(Iso9001, "8.4")), new(ProcRecebimento, Req(Iso9001, "8.6")) },
         LiderId = lider ?? AudLider1, AuditorIds = { AudAuditor }
     };
 
@@ -107,7 +107,7 @@ public sealed class Ambiente : IDisposable
     {
         Tipo = TipoAuditoria.Fornecedor, Ano = ano, MesPrevisto = 6, NormaIds = { Iso9001 },
         FornecedorNome = "Fornecedor X", FornecedorCnpj = SementeDemonstracao.GerarCnpj("112223330001"),
-        FornecedorEndereco = "Rua A, 1", EscopoFornecimento = "Chapas", RequisitoIds = { Req(Iso9001, "8.4") },
+        FornecedorEndereco = "Rua A, 1", EscopoFornecimento = "Chapas", Itens = { new(null, Req(Iso9001, "8.4")) },
         LiderId = AudLider1
     };
 
